@@ -18,4 +18,6 @@ __all__ = [
     "__email__",
     "__license__",
     "__copyright__",
+    "get_simulator",
+    "get_visualizer",
 ]

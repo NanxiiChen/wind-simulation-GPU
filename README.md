@@ -1,6 +1,16 @@
-# 随机风场模拟
+
+# Stochastic Wind Field Simulation on GPU
+
+We present a GPU-accelerated Python implementation of the stochastic wind field simulation method based on Shinozuka's harmonic synthesis method. This method is widely used in civil engineering to simulate fluctuating wind fields, particularly for structural analysis of bridges and buildings.
+
+We provide both JAX and PyTorch implementations to leverage the parallel computing capabilities of GPUs, significantly speeding up the simulation process compared to traditional CPU-based methods.
+
+| Num_samples | JAX (s) | PyTorch (s) | CPU (s) |
+|-------------|---------|-------------|---------|
+| 100        | 2.56    | 2.78        | ??  |
 
 
+## Shinozuka's harmonic synthesis method
 
 为了便于分析脉动风的影响，工程上常将脉动风假定为零均值的正态随机平稳过程。其频率特性可由功率谱密度展现。规范中使用式（2.2）与式（2.3）来计算顺风向脉动风功率谱密度$S_u(n)$与竖向脉动风功率谱密度$S_w(n)$：
 
