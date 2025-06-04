@@ -5,14 +5,14 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from jax import random, vmap
 
-from .model import WindSimulator
+from .simulator import JaxWindSimulator
 
 
-class WindVisualizer:
+class JaxWindVisualizer:
 
-    def __init__(self, key=0, simulator: WindSimulator = None, **kwargs):
+    def __init__(self, key=0, simulator: JaxWindSimulator = None, **kwargs):
         self.key = random.PRNGKey(key)
-        self.simulator = simulator if simulator else WindSimulator(key)
+        self.simulator = simulator if simulator else JaxWindSimulator(key)
         self.params = {}
         for key, value in kwargs.items():
             self.params[key] = value

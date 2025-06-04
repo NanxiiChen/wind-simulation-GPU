@@ -5,7 +5,7 @@ from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
 
 
-class WindSimulator:
+class JaxWindSimulator:
     """随机风场模拟器类"""
 
     def __init__(self, key=0):

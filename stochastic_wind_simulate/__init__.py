@@ -1,5 +1,7 @@
-from .model import WindSimulator
-from .visualizer import WindVisualizer
+# from .model import WindSimulator
+# from .visualizer import WindVisualizer
+
+from .factory import get_simulator, get_visualizer
 
 
 __title__ = "Stochastic Wind Simulation"
@@ -16,6 +18,4 @@ __all__ = [
     "__email__",
     "__license__",
     "__copyright__",
-    "WindSimulator",
-    "WindVisualizer",
 ]

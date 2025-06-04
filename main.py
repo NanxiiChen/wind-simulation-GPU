@@ -1,14 +1,14 @@
 import time
 
-import jax.numpy as jnp
-
-from stochastic_wind_simulate import WindSimulator, WindVisualizer
+from stochastic_wind_simulate import get_simulator, get_visualizer
 
 
 def main():
     """主程序入口"""
     # 创建风场模拟器
-    simulator = WindSimulator(key=42)
+    # simulator = WindSimulator(key=42)
+    backend = "torch"  # 可以选择 "jax" 或 "torch"
+    simulator = get_simulator(backend=backend, key=42)
 
     # 可以更新参数（可选）
     simulator.update_parameters(
@@ -17,11 +17,22 @@ def main():
     )
 
     # 定义模拟点的位置和平均风速
-    n = 90  # 模拟点数量
+    n = 10  # 模拟点数量
     Z = 30.0  # 高度(m)
-    positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-    positions = positions.at[:, 0].set(jnp.linspace(0, 100, n))
-    positions = positions.at[:, -1].set(Z)
+
+    if backend == "jax":
+        import jax.numpy as jnp
+
+        positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
+        positions = positions.at[:, 0].set(jnp.linspace(0, 100, n))
+        positions = positions.at[:, -1].set(Z)
+    elif backend == "torch":
+        import torch
+        import numpy as np
+
+        positions = torch.zeros((n, 3))  # 初始化位置数组，(x, y, z)
+        positions[:, 0] = torch.linspace(0, 100, n)
+        positions[:, -1] = Z
 
     # 各点平均风速
     # wind_speeds = jnp.array([20.0]* n)
@@ -38,16 +49,16 @@ def main():
 
     # 模拟竖向脉动风
     print("模拟竖向脉动风...")
-    w_samples, _ = simulator.simulate_wind(positions, wind_speeds, direction="w")
-
-    jnp.save("u_samples.npy", u_samples)
-    jnp.save("w_samples.npy", w_samples)
+    w_samples, frequencies = simulator.simulate_wind(
+        positions, wind_speeds, direction="w"
+    )
 
     # 打印计算时间
     elapsed_time = time.time() - start_time
     print(f"模拟完成，耗时: {elapsed_time:.2f}秒")
 
-    visualizer = WindVisualizer(key=42, **simulator.params)
+    # visualizer = WindVisualizer(key=42, **simulator.params)
+    visualizer = get_visualizer(backend=backend, key=42, **simulator.params)
     visualizer.plot_psd(u_samples, Z, show_num=5, show=True, direction="u")
     visualizer.plot_psd(w_samples, Z, show_num=5, show=True, direction="w")
 
