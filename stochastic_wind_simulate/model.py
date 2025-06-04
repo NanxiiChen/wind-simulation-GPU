@@ -135,11 +135,10 @@ class WindSimulator:
             )(u_stars, f_values_all[freq_idx])
         )(jnp.arange(num_freqs))
 
-        # 创建网格索引
+
         i_mesh, j_mesh = jnp.meshgrid(jnp.arange(n), jnp.arange(n), indexing="ij")
         i_flat, j_flat = i_mesh.flatten(), j_mesh.flatten()
 
-        # 一次性计算整个互谱密度矩阵
         def compute_matrix_for_freq(freq_idx):
             freq = frequencies[freq_idx]
 
@@ -177,7 +176,6 @@ class WindSimulator:
                     ),  # 非对角线元素
                 )
 
-            # 向量化计算矩阵所有元素
             values = vmap(lambda pair: compute_coh_element(pair[0], pair[1]))(
                 jnp.stack([i_flat, j_flat], axis=-1)
             )
@@ -214,10 +212,7 @@ class WindSimulator:
         M = self.params["M"]
         dw = self.params["dw"]
 
-        # 生成频率数组
         frequencies = self.calculate_simulation_frequency(N, dw)
-
-        # 选择适当的功率谱密度函数
         spectrum_func = (
             self.calculate_power_spectrum_u
             if direction == "u"
@@ -235,21 +230,20 @@ class WindSimulator:
 
         H_matrices = vmap(cholesky_with_reg)(S_matrices)
 
-        # 使用函数式的方法生成随机相位
+        # 生成随机相位
         key, subkey = random.split(key)
         phi = random.uniform(subkey, (n, n, N), minval=0, maxval=2 * jnp.pi)
 
         def compute_B_for_point(j):
             def compute_B_for_freq(l):
-                # 使用掩码代替动态大小的arange
-                indices = jnp.arange(n)  # 使用固定大小n
+                indices = jnp.arange(n)
                 mask = indices <= j
                 H_terms = jnp.where(mask, H_matrices[l, j, indices], 0.0)
                 phi_terms = jnp.where(mask, phi[j, indices, l], 0.0)
 
                 # 只对有效部分进行计算
                 terms = H_terms * jnp.exp(1j * phi_terms)
-                return jnp.sum(terms * mask)  # 使用掩码确保只计算有效元素
+                return jnp.sum(terms * mask)
 
             B_values = vmap(compute_B_for_freq)(jnp.arange(N))
             # 填充剩余位置为零
@@ -258,11 +252,9 @@ class WindSimulator:
 
         # 对每个点并行计算B
         B = vmap(compute_B_for_point)(jnp.arange(n))
-
-        # 使用vmap进行FFT计算
         G = vmap(jnp.fft.fft)(B)
 
-        # 计算风场样本 (替代二重循环)
+        # 计算风场样本 
         def compute_samples_for_point(j):
             p_indices = jnp.arange(M)
             exponent = jnp.exp(1j * (p_indices * jnp.pi / M))

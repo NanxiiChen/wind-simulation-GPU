@@ -3,7 +3,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from jax import jit, random, vmap
+from jax import random, vmap
 
 from .model import WindSimulator
 
@@ -21,9 +21,8 @@ class WindVisualizer:
         self, wind_samples, Z, show_num=5, save_path=None, show=True, direction="u"
     ):
         """绘制模拟结果"""
-        n = wind_samples.shape[0]  # 点的数量
+        n = wind_samples.shape[0]
 
-        # 随机挑选 show_num个点进行绘图
         indices = random.choice(
             self.key, jnp.arange(n), shape=(show_num,), replace=False
         )
@@ -95,7 +94,6 @@ class WindVisualizer:
         correlation = jax.scipy.signal.correlate(
             data_i_centered, data_j_centered, mode='full'
         )
-        # 归一化处理
         std_i = jnp.std(data_i)
         std_j = jnp.std(data_j)
         n = len(data_i)
@@ -107,7 +105,7 @@ class WindVisualizer:
         # 计算互谱密度
         cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
         
-        # 准备完整的频谱（保证厄米特性质）
+        # 准备完整的频谱
         full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
         N = len(coherence)
         full_spectrum = full_spectrum.at[1:N+1].set(cross_spectrum)
@@ -117,7 +115,6 @@ class WindVisualizer:
         theo_correlation = jnp.real(jnp.fft.ifft(full_spectrum))
         theo_correlation = jnp.fft.fftshift(theo_correlation)
         
-        # 归一化
         theo_max = jnp.max(jnp.abs(theo_correlation))
         return theo_correlation / (theo_max if theo_max > 0 else 1.0)
 
@@ -127,17 +124,14 @@ class WindVisualizer:
                               save_path=None, show=True, direction="u", 
                               indices=None, downsample=1, **kwargs):
         """绘制互相关函数并与理论值比较（优化版本）"""
-        # 基本参数设置
         n = wind_samples.shape[0]
         
-        # 处理下采样
         if downsample > 1:
             wind_samples = wind_samples[:, ::downsample]
             dt = self.params["dt"] * downsample
         else:
             dt = self.params["dt"]
             
-        # 处理索引
         self.key, subkey = random.split(self.key)
         if indices is None:
             idx = random.randint(subkey, (1,), 0, n).item()
@@ -149,7 +143,6 @@ class WindVisualizer:
         else:
             raise ValueError("indices必须是整数或两个整数的元组")
             
-        # 获取数据
         i, j = indices
         data_i = wind_samples[i]
         data_j = wind_samples[j]
@@ -164,15 +157,12 @@ class WindVisualizer:
         x_j, y_j, z_j = positions[j]
         U_zi, U_zj = wind_speeds[i], wind_speeds[j]
         
-        # 获取模拟参数
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
         
-        # 计算频率数组
         frequencies = self.simulator.calculate_simulation_frequency(N, dw)
         
-        # 确定谱函数
         spectrum_func = (
             self.simulator.calculate_power_spectrum_u
             if direction == "u"
