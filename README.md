@@ -22,11 +22,18 @@ Performance comparison across different backends:
 
 | Num_samples | JAX (s) | PyTorch (s) | CPU (s) |
 |-------------|---------|-------------|---------|
-| 100        | 2.56    | 2.78        | 7200+  |
+| 100        | 2.32    | 2.56        | 7200+  |
 
 
 ## Quick Start
 
+### Basic Usage
+
+```bash
+python examples/basic_usage.py  --backend "jax"
+```
+
+### Example Code
 
 ```python
 
