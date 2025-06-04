@@ -87,75 +87,98 @@ class WindVisualizer:
             plt.show()
         else:
             plt.close()
-    
-    @partial(jit, static_argnums=(0,))
+
     def _compute_correlation(self, data_i, data_j):
-        """计算两个数据序列的互相关"""
+        """使用JIT加速的互相关函数计算"""
         data_i_centered = data_i - jnp.mean(data_i)
         data_j_centered = data_j - jnp.mean(data_j)
-
-        # 计算中心化后的互相关
         correlation = jax.scipy.signal.correlate(
-            data_i_centered, data_j_centered, mode="full"
+            data_i_centered, data_j_centered, mode='full'
         )
-
-        # 使用标准的归一化方法
-        std_i = jnp.std(data_i_centered)
-        std_j = jnp.std(data_j_centered)
+        # 归一化处理
+        std_i = jnp.std(data_i)
+        std_j = jnp.std(data_j)
         n = len(data_i)
-        correlation = correlation / (n * std_i * std_j)
-
-        return correlation
+        return correlation / (n * std_i * std_j)
     
 
-    def plot_cross_correlation(
-        self,
-        wind_samples,
-        positions,
-        wind_speeds,
-        save_path=None,
-        show=True,
-        direction="u",
-        indices=None,
-        **kwargs,
-    ):
-        n = wind_samples.shape[0]
-        dt = self.params["dt"]
+    def _calculate_theoretical_correlation(self, S_ii, S_jj, coherence, M):
+        """计算理论互相关函数（傅里叶逆变换）"""
+        # 计算互谱密度
+        cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
+        
+        # 准备完整的频谱（保证厄米特性质）
+        full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
+        N = len(coherence)
+        full_spectrum = full_spectrum.at[1:N+1].set(cross_spectrum)
+        full_spectrum = full_spectrum.at[M-N:].set(jnp.flip(jnp.conj(cross_spectrum)))
+        
+        # 执行IFFT获得理论互相关函数
+        theo_correlation = jnp.real(jnp.fft.ifft(full_spectrum))
+        theo_correlation = jnp.fft.fftshift(theo_correlation)
+        
+        # 归一化
+        theo_max = jnp.max(jnp.abs(theo_correlation))
+        return theo_correlation / (theo_max if theo_max > 0 else 1.0)
 
+
+    
+    def plot_cross_correlation(self, wind_samples, positions, wind_speeds, 
+                              save_path=None, show=True, direction="u", 
+                              indices=None, downsample=1, **kwargs):
+        """绘制互相关函数并与理论值比较（优化版本）"""
+        # 基本参数设置
+        n = wind_samples.shape[0]
+        
+        # 处理下采样
+        if downsample > 1:
+            wind_samples = wind_samples[:, ::downsample]
+            dt = self.params["dt"] * downsample
+        else:
+            dt = self.params["dt"]
+            
+        # 处理索引
         self.key, subkey = random.split(self.key)
         if indices is None:
-            idx = random.randint(subkey, (1,), 0, n)
+            idx = random.randint(subkey, (1,), 0, n).item()
             indices = idx, idx
         elif isinstance(indices, int):
             indices = (indices, indices)
         elif isinstance(indices, tuple) and len(indices) == 2:
             pass
         else:
-            raise ValueError("indices must be an int or a tuple of two ints")
-
-        i, j = indices[0], indices[1]
+            raise ValueError("indices必须是整数或两个整数的元组")
+            
+        # 获取数据
+        i, j = indices
         data_i = wind_samples[i]
         data_j = wind_samples[j]
+        
+        # 计算实际互相关函数
         correlation = self._compute_correlation(data_i, data_j)
-
         lags = jnp.arange(-len(data_i) + 1, len(data_i))
         lag_times = lags * dt
-
+        
+        # 提取位置信息
         x_i, y_i, z_i = positions[i]
         x_j, y_j, z_j = positions[j]
         U_zi, U_zj = wind_speeds[i], wind_speeds[j]
-        distance = jnp.sqrt((x_i - x_j) ** 2 + (y_i - y_j) ** 2 + (z_i - z_j) ** 2)
-
+        
+        # 获取模拟参数
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
+        
+        # 计算频率数组
         frequencies = self.simulator.calculate_simulation_frequency(N, dw)
-
+        
+        # 确定谱函数
         spectrum_func = (
             self.simulator.calculate_power_spectrum_u
             if direction == "u"
             else self.simulator.calculate_power_spectrum_w
         )
+        
 
         # 计算各点的摩阻速度
         u_star_i = self.simulator.calculate_friction_velocity(
@@ -181,26 +204,6 @@ class WindVisualizer:
         S_ii = spectrum_func(frequencies, u_star_i, f_i)
         S_jj = spectrum_func(frequencies, u_star_j, f_j)
 
-        # 计算相干函数和互谱密度
-        # coherence = jnp.array(
-        #     [
-        #         self.simulator.calculate_coherence(
-        #             x_i,
-        #             x_j,
-        #             y_i,
-        #             y_j,
-        #             z_i,
-        #             z_j,
-        #             2 * jnp.pi * freq,
-        #             U_zi,
-        #             U_zj,  # 使用角频率
-        #             self.params["C_x"],
-        #             self.params["C_y"],
-        #             self.params["C_z"],
-        #         )
-        #         for freq in frequencies
-        #     ]
-        # )
         coherence = vmap(
             lambda freq: self.simulator.calculate_coherence(
                 x_i,
@@ -218,31 +221,14 @@ class WindVisualizer:
             )
         )(frequencies)
 
-        cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
-
-        # 为IFFT准备完整的互谱密度函数 (确保是厄米特矩阵)
-        full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
-        # 正频率部分
-        full_spectrum = full_spectrum.at[1 : N + 1].set(cross_spectrum)
-        # 负频率部分 (共轭对称)
-        full_spectrum = full_spectrum.at[M - N :].set(jnp.flip(cross_spectrum))
-
-        # 执行IFFT得到理论互相关函数
-        theo_correlation = jnp.real(jnp.fft.ifft(full_spectrum))
-        theo_correlation = jnp.fft.fftshift(theo_correlation)  # 将零延迟移到中间
-
-        # 理论互相关函数时间轴
+        theo_correlation = self._calculate_theoretical_correlation(
+            S_ii, S_jj, coherence, M
+        )
         theo_lags = jnp.arange(-M // 2, M // 2)
         theo_lag_times = theo_lags * dt
+        
 
-        # 归一化理论互相关函数
-        theo_max = jnp.max(jnp.abs(theo_correlation))
-        theo_correlation = theo_correlation / (theo_max if theo_max > 0 else 1.0)
-
-        # 绘图
         fig, ax = plt.subplots(figsize=(12, 8))
-
-        # 截取一定范围的实测相关函数 (±200点)
         mid = len(correlation) // 2
         range_points = kwargs.get("range_points", len(theo_lag_times) // 2)
         plot_corr = correlation[mid - range_points : mid + range_points + 1]
