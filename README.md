@@ -29,6 +29,8 @@ Performance comparison across different backends:
 
 ### Basic Usage
 
+This library requires either JAX or PyTorch to be installed, where JAX is highly recommended for its performance benefits and compatibility with vectorized operations.
+
 ```bash
 python examples/basic_usage.py  --backend "jax"
 ```
