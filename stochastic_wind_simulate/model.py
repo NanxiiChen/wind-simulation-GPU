@@ -1,11 +1,6 @@
-import time
-from dataclasses import dataclass
-from functools import partial
-from typing import Callable, Dict, List, Tuple
+from typing import Dict
 
-import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
 
