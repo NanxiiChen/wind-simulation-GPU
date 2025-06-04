@@ -298,19 +298,28 @@ class TorchWindSimulator:
 
         H_matrices = func.vmap(cholesky_with_reg)(S_matrices)
 
+        # 修改 _simulate_fluctuating_wind 方法中的 B 矩阵计算部分
+        N_int = int(N.item()) if isinstance(N, torch.Tensor) else int(N)
+        M_int = int(M.item()) if isinstance(M, torch.Tensor) else int(M)
+
         # 生成随机相位
         torch.manual_seed(self.seed)  # 确保可重复性
-        phi = torch.rand((n, n, N), device=self.device) * 2 * torch.pi
+        phi = torch.rand((n, n, N_int), device=self.device) * 2 * torch.pi
 
-        B = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
+        # 初始化 B 矩阵
+        B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
-        # 使用循环计算 B
+        # 方法1：部分向量化 - 保留外层循环，向量化内层计算
         for j in range(n):
-            for l in range(N):
-                for i in range(j + 1):
-                    B[j, l] += H_matrices[l, j, i] * torch.exp(1j * phi[j, i, l])
+            # 使用 einsum 一次计算所有频率点的贡献
+            # 注意维度顺序: H_matrices 是 [N, n, n]，我们需要 [:, j, :j+1]
+            H_slice = H_matrices[:, j, :j+1].to(torch.complex64)  # [N, j+1]
+            exp_slice = torch.exp(1j * phi[j, :j+1, :].permute(1, 0))  # [N, j+1]
+            
+            # 在维度1上求和 (对应于 i)
+            B[j, :N_int] = torch.einsum('li,li->l', H_slice, exp_slice)
 
-        # 计算FFT - 可以保留向量化
+        # 计算 FFT
         G = torch.fft.fft(B, dim=1)
 
         # 计算风场样本 - 可以保留向量化

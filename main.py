@@ -10,14 +10,13 @@ def main():
     backend = "torch"  # 可以选择 "jax" 或 "torch"
     simulator = get_simulator(backend=backend, key=42)
 
-    # 可以更新参数（可选）
     simulator.update_parameters(
         U_d=20.0,
         H_bar=15.0,
     )
 
     # 定义模拟点的位置和平均风速
-    n = 10  # 模拟点数量
+    n = 200  # 模拟点数量
     Z = 30.0  # 高度(m)
 
     if backend == "jax":
@@ -26,6 +25,7 @@ def main():
         positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
         positions = positions.at[:, 0].set(jnp.linspace(0, 100, n))
         positions = positions.at[:, -1].set(Z)
+
     elif backend == "torch":
         import torch
         import numpy as np
@@ -35,7 +35,6 @@ def main():
         positions[:, -1] = Z
 
     # 各点平均风速
-    # wind_speeds = jnp.array([20.0]* n)
     wind_speeds = positions[:, 0] * 0.2 + 25.0  # 模拟线性变化的平均风速
 
     # 记录开始时间
@@ -52,6 +51,8 @@ def main():
     w_samples, frequencies = simulator.simulate_wind(
         positions, wind_speeds, direction="w"
     )
+
+    print(u_samples.shape, w_samples.shape)
 
     # 打印计算时间
     elapsed_time = time.time() - start_time
