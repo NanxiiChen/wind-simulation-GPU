@@ -65,5 +65,5 @@ visualizer.plot_psd(u_samples, Z, show_num=5, show=True, direction="u")
 If you use this library in your research, please cite the following paper:
 
 ```bibtex
-% Comming soon...
+% Coming soon...
 ```
