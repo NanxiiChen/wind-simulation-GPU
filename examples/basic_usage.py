@@ -1,4 +1,3 @@
-
 import sys
 import os
 import time
@@ -12,6 +11,7 @@ from stochastic_wind_simulate import get_simulator, get_visualizer
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
 
 def main():
     """主程序入口"""
@@ -73,15 +73,18 @@ def main():
         positions, wind_speeds, direction="w"
     )
 
-
     # 打印计算时间
     elapsed_time = time.time() - start_time
     logging.info(f"模拟完成，耗时: {elapsed_time:.2f}秒")
 
     # visualizer = WindVisualizer(key=42, **simulator.params)
     visualizer = get_visualizer(backend=backend, key=42, **simulator.params)
-    visualizer.plot_psd(u_samples, positions[:, -1], show_num=6, show=True, direction="u")
-    visualizer.plot_psd(w_samples, positions[:, -1], show_num=6, show=True, direction="w")
+    visualizer.plot_psd(
+        u_samples, positions[:, -1], show_num=6, show=True, direction="u"
+    )
+    visualizer.plot_psd(
+        w_samples, positions[:, -1], show_num=6, show=True, direction="w"
+    )
 
     visualizer.plot_cross_correlation(
         u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 1)

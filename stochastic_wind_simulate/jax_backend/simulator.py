@@ -135,7 +135,6 @@ class JaxWindSimulator:
             )(u_stars, f_values_all[freq_idx])
         )(jnp.arange(num_freqs))
 
-
         i_mesh, j_mesh = jnp.meshgrid(jnp.arange(n), jnp.arange(n), indexing="ij")
         i_flat, j_flat = i_mesh.flatten(), j_mesh.flatten()
 
@@ -254,7 +253,7 @@ class JaxWindSimulator:
         B = vmap(compute_B_for_point)(jnp.arange(n))
         G = vmap(jnp.fft.fft)(B)
 
-        # 计算风场样本 
+        # 计算风场样本
         def compute_samples_for_point(j):
             p_indices = jnp.arange(M)
             exponent = jnp.exp(1j * (p_indices * jnp.pi / M))

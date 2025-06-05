@@ -49,7 +49,6 @@ class JaxWindVisualizer:
             in_axes=(0, None),
         )(Zs, direction)
 
-
         fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
         axes = axes.flatten() if nrow > 1 else [axes]
         for idx, i in enumerate(indices):

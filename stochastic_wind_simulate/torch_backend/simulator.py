@@ -7,8 +7,6 @@ import numpy as np
 import math
 
 
-
-
 class TorchWindSimulator:
     """使用 PyTorch 实现的随机风场模拟器类"""
 
@@ -65,7 +63,7 @@ class TorchWindSimulator:
             return value.to(device)
         else:
             return torch.tensor(value, device=device)
-        
+
     def update_parameters(self, **kwargs):
         """更新模拟参数"""
         for key, value in kwargs.items():
@@ -313,11 +311,11 @@ class TorchWindSimulator:
         for j in range(n):
             # 使用 einsum 一次计算所有频率点的贡献
             # 注意维度顺序: H_matrices 是 [N, n, n]，我们需要 [:, j, :j+1]
-            H_slice = H_matrices[:, j, :j+1].to(torch.complex64)  # [N, j+1]
-            exp_slice = torch.exp(1j * phi[j, :j+1, :].permute(1, 0))  # [N, j+1]
-            
+            H_slice = H_matrices[:, j, : j + 1].to(torch.complex64)  # [N, j+1]
+            exp_slice = torch.exp(1j * phi[j, : j + 1, :].permute(1, 0))  # [N, j+1]
+
             # 在维度1上求和 (对应于 i)
-            B[j, :N_int] = torch.einsum('li,li->l', H_slice, exp_slice)
+            B[j, :N_int] = torch.einsum("li,li->l", H_slice, exp_slice)
 
         # 计算 FFT
         G = torch.fft.fft(B, dim=1)
