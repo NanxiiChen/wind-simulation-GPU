@@ -58,7 +58,7 @@ u_samples, frequencies = simulator.simulate_wind(positions, wind_speeds, directi
 
 # Visualize results
 visualizer = get_visualizer(backend="torch", **simulator.params)
-visualizer.plot_psd(u_samples, Z, show_num=5, show=True, direction="u")
+visualizer.plot_psd(u_samples, positions[:, -1], show_num=5, show=True, direction="u")
 ```
 
 

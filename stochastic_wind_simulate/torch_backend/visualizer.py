@@ -9,8 +9,6 @@ from scipy import signal
 from .simulator import TorchWindSimulator
 
 
-
-
 class TorchWindVisualizer:
     """随机风场可视化器类"""
 
@@ -55,22 +53,65 @@ class TorchWindVisualizer:
             return value.to(device)
         else:
             return torch.tensor(value, device=device)
-        
+
+    def _calculate_theoretical_spectrum(
+        self,
+        Z: float,
+        direction: str = "u",
+    ) -> Tuple[Tensor, Tensor]:
+        # 计算理论谱
+        u_star = self.simulator.calculate_friction_velocity(
+            self._to_tensor(Z, device=self.device),
+            self.params["U_d"],
+            self.params["z_0"],
+            self.params["z_d"],
+            self.params["K"],
+        )
+
+        dw = self.params["dw"]
+        N = self.params["N"]
+
+        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
+
+        f_nondimensional = self.simulator.calculate_f(
+            frequencies,
+            self._to_tensor(Z, device=self.device),
+            self.params["U_d"],
+        )
+
+        S_theory = (
+            self.simulator.calculate_power_spectrum_u(
+                self._to_tensor(frequencies, device=self.device),
+                self._to_tensor(u_star, device=self.device),
+                self._to_tensor(f_nondimensional, device=self.device),
+            )
+            if direction == "u"
+            else self.simulator.calculate_power_spectrum_w(
+                self._to_tensor(frequencies, device=self.device),
+                self._to_tensor(u_star, device=self.device),
+                self._to_tensor(f_nondimensional, device=self.device),
+            )
+        )
+
+        return frequencies, S_theory
+
     def plot_psd(
         self,
         wind_samples: np.ndarray,
-        Z: float,
+        Zs: torch.Tensor,
         show_num: int = 5,
         save_path: Optional[str] = None,
         show: bool = True,
         direction: str = "u",
+        indices: Optional[Union[int, Tuple[int, int]]] = None,
+        **kwargs,
     ):
         """
         绘制功率谱密度图
 
         参数:
             wind_samples: 风速时间序列，形状为 (n_points, n_timesteps)
-            Z: 高度值
+            Zs: 高度，形状为 (n_points,)
             show_num: 要显示的采样点数量
             save_path: 保存图像的路径，如果不保存则为None
             show: 是否显示图形
@@ -80,16 +121,34 @@ class TorchWindVisualizer:
 
         # 随机选择点进行显示
         torch.manual_seed(self.seed)
-        if show_num >= n:
-            indices = torch.arange(n)
+        if indices is None:
+            if show_num >= n:
+                indices = torch.arange(n)
+            else:
+                indices = torch.randperm(n)[:show_num]
+            indices = indices.tolist()
+        elif isinstance(indices, int):
+            indices = (indices,)
+        elif isinstance(indices, tuple) or isinstance(indices, list):
+            pass
         else:
-            indices = torch.randperm(n)[:show_num]
+            raise ValueError("indices必须是整数或整数元组")
 
-        fig, ax = plt.subplots(figsize=(12, 8))
+        ncol = kwargs.get("ncol", 3)
+        nrow = (len(indices) + ncol - 1) // ncol
 
+        frequencies_theory, S_theory = func.vmap(
+            self._calculate_theoretical_spectrum, in_dims=(0, None)
+        )(Zs, direction)
+        frequencies_theory = frequencies_theory.cpu().numpy()
+        S_theory = S_theory.cpu().numpy()
+
+        fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
+        axes = axes.flatten() if nrow > 1 else [axes]
         # 计算并绘制每个采样点的功率谱密度
-        for i in indices:
-            data = wind_samples[i.item()]
+        for idx, i in enumerate(indices):
+            ax = axes[idx]
+            data = wind_samples[i]
             frequencies, psd = signal.welch(
                 data,
                 fs=1 / self.params["dt"],
@@ -97,87 +156,26 @@ class TorchWindVisualizer:
                 scaling="density",
                 window="hann",
             )
-            ax.loglog(frequencies, psd, label=f"Point {i.item()+1}")
+            ax.loglog(frequencies, psd, label=f"Point {i+1}")
 
-        # 计算理论谱
-        u_star = (
-            self.simulator.calculate_friction_velocity(
-                self._to_tensor(Z, device=self.device),
-                self.params["U_d"],
-                self.params["z_0"],
-                self.params["z_d"],
-                self.params["K"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        dw = self.params["dw"]
-        N = self.params["N"]
-
-        # 计算频率和无量纲频率 - 修改这里，保持张量在同一设备上
-        frequencies_tensor = self.simulator.calculate_simulation_frequency(
-            N, dw
-        )  # 不要立即移到CPU
-        frequencies_numpy = frequencies_tensor.cpu().numpy()  # 仅创建NumPy数组用于绘图
-
-        # 保持所有张量在GPU上进行计算后，再将结果移到CPU
-        f_nondimensional = (
-            self.simulator.calculate_f(
-                frequencies_tensor,  # 现在在self.device上
-                self._to_tensor(Z, device=self.device),
-                self.params["U_d"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        # 根据风向选择理论谱函数
-        if direction == "u":
-            S_theory = np.array(
-                [
-                    self.simulator.calculate_power_spectrum_u(
-                        self._to_tensor(f, device=self.device),
-                        self._to_tensor(u_star, device=self.device),
-                        self._to_tensor(f_nd, device=self.device),
-                    )
-                    .cpu()
-                    .numpy()
-                    for f, f_nd in zip(frequencies_numpy, f_nondimensional)
-                ]
-            )
-        else:
-            S_theory = np.array(
-                [
-                    self.simulator.calculate_power_spectrum_w(
-                        self._to_tensor(f, device=self.device),
-                        self._to_tensor(u_star, device=self.device),
-                        self._to_tensor(f_nd, device=self.device),
-                    )
-                    .cpu()
-                    .numpy()
-                    for f, f_nd in zip(frequencies_numpy, f_nondimensional)
-                ]
+            # 绘制理论谱线
+            ax.loglog(
+                frequencies_theory[i],
+                S_theory[i],
+                "--",
+                color="black",
+                linewidth=2,
+                label="Theoretical Reference",
             )
 
-        # 绘制理论谱线
-        ax.loglog(
-            frequencies_numpy,
-            S_theory,
-            "--",
-            color="black",
-            linewidth=2,
-            label="Theoretical Reference",
-        )
+            ax.set(
+                xlabel="Frequency (Hz)",
+                ylabel="Power Spectral Density (m²/s²)",
+                title=f"PSD of {direction.upper()} Wind at Z={Zs[i].item():.2f} m (Point {i+1})",
+            )
 
-        ax.set(
-            xlabel="Frequency (Hz)",
-            ylabel="Power Spectral Density (m²/s²)",
-            title=f"PSD of {direction.upper()} Wind at Z={Z}m",
-        )
-
-        plt.grid(True, which="both", ls="-", alpha=0.6)
-        plt.legend()
+            ax.grid(True, which="both", ls="-", alpha=0.6)
+            ax.legend()
 
         if save_path:
             plt.savefig(save_path)

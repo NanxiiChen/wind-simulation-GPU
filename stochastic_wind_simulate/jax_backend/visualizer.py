@@ -1,3 +1,4 @@
+from typing import Dict, Tuple, Optional, Union, List
 from functools import partial
 
 import jax
@@ -18,18 +19,41 @@ class JaxWindVisualizer:
             self.params[key] = value
 
     def plot_psd(
-        self, wind_samples, Z, show_num=5, save_path=None, show=True, direction="u"
+        self,
+        wind_samples: jnp.ndarray,
+        Zs: jnp.ndarray,
+        show_num=5,
+        save_path: str = None,
+        show=True,
+        direction="u",
+        indices: Optional[Union[int, Tuple[int, int]]] = None,
+        **kwargs,
     ):
         """绘制模拟结果"""
         n = wind_samples.shape[0]
 
-        indices = random.choice(
-            self.key, jnp.arange(n), shape=(show_num,), replace=False
-        )
+        if indices is None:
+            self.key, subkey = random.split(self.key)
+            indices = random.randint(subkey, (show_num,), 0, n)
+        elif isinstance(indices, int):
+            indices = (indices,)
+        elif isinstance(indices, tuple) and len(indices) == 2:
+            pass
+        else:
+            raise ValueError("indices必须是整数或整数序列")
 
-        fig, ax = plt.subplots(figsize=(12, 8))
+        ncol = kwargs.get("ncol", 3)
+        nrow = (len(indices) + ncol - 1) // ncol
+        frequencies_theory, S_theory = vmap(
+            self._calculate_theoretical_spectrum,
+            in_axes=(0, None),
+        )(Zs, direction)
 
-        for i in indices:
+
+        fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
+        axes = axes.flatten() if nrow > 1 else [axes]
+        for idx, i in enumerate(indices):
+            ax = axes[idx]
             data = wind_samples[i]
             frequencies, psd = jax.scipy.signal.welch(
                 data,
@@ -40,44 +64,22 @@ class JaxWindVisualizer:
             )
             ax.loglog(frequencies, psd, label=f"Point {i+1}")
 
-        u_star = self.simulator.calculate_friction_velocity(
-            Z,
-            self.params["U_d"],
-            self.params["z_0"],
-            self.params["z_d"],
-            self.params["K"],
-        )
-        dw = self.params["dw"]
-        N = self.params["N"]
-        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
-        f_nondimensional = self.simulator.calculate_f(
-            frequencies, Z, self.params["U_d"]
-        )
-        S_u_theory = (
-            self.simulator.calculate_power_spectrum_u(
-                frequencies, u_star, f_nondimensional
+            ax.loglog(
+                frequencies_theory[i],
+                S_theory[i],
+                "--",
+                color="black",
+                linewidth=2,
+                label="Theoretical Reference",
             )
-            if direction == "u"
-            else self.simulator.calculate_power_spectrum_w(
-                frequencies, u_star, f_nondimensional
+            ax.set(
+                xlabel="Frequency (Hz)",
+                ylabel="Power Spectral Density (m²/s²)",
+                title=f"PSD of {direction.upper()} Wind at Point {i+1} (Z={Zs[i]:.2f} m)",
             )
-        )
-        ax.loglog(
-            frequencies,
-            S_u_theory,
-            "--",
-            color="black",
-            linewidth=2,
-            label="Theoretical Reference",
-        )
-        ax.set(
-            xlabel="Frequency (Hz)",
-            ylabel="Power Spectral Density (m²/s²)",
-            title=f"PSD of {direction.upper()} Wind at Z={Z}m",
-        )
 
-        plt.grid(True, which="both", ls="-", alpha=0.6)
-        plt.legend()
+            ax.grid(True, which="both", ls="-", alpha=0.6)
+            ax.legend()
 
         if save_path:
             plt.savefig(save_path)
@@ -92,46 +94,81 @@ class JaxWindVisualizer:
         data_i_centered = data_i - jnp.mean(data_i)
         data_j_centered = data_j - jnp.mean(data_j)
         correlation = jax.scipy.signal.correlate(
-            data_i_centered, data_j_centered, mode='full'
+            data_i_centered, data_j_centered, mode="full"
         )
         std_i = jnp.std(data_i)
         std_j = jnp.std(data_j)
         n = len(data_i)
         return correlation / (n * std_i * std_j)
-    
 
     def _calculate_theoretical_correlation(self, S_ii, S_jj, coherence, M):
         """计算理论互相关函数（傅里叶逆变换）"""
         # 计算互谱密度
         cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
-        
+
         # 准备完整的频谱
         full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
         N = len(coherence)
-        full_spectrum = full_spectrum.at[1:N+1].set(cross_spectrum)
-        full_spectrum = full_spectrum.at[M-N:].set(jnp.flip(jnp.conj(cross_spectrum)))
-        
+        full_spectrum = full_spectrum.at[1 : N + 1].set(cross_spectrum)
+        full_spectrum = full_spectrum.at[M - N :].set(
+            jnp.flip(jnp.conj(cross_spectrum))
+        )
+
         # 执行IFFT获得理论互相关函数
         theo_correlation = jnp.real(jnp.fft.ifft(full_spectrum))
         theo_correlation = jnp.fft.fftshift(theo_correlation)
-        
+
         theo_max = jnp.max(jnp.abs(theo_correlation))
         return theo_correlation / (theo_max if theo_max > 0 else 1.0)
 
+    def _calculate_theoretical_spectrum(
+        self, Z: float, direction: str = "u"
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        u_star = self.simulator.calculate_friction_velocity(
+            Z,
+            self.params["U_d"],
+            self.params["z_0"],
+            self.params["z_d"],
+            self.params["K"],
+        )
+        dw = self.params["dw"]
+        N = self.params["N"]
+        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
+        f_nondimensional = self.simulator.calculate_f(
+            frequencies, Z, self.params["U_d"]
+        )
+        S_theory = (
+            self.simulator.calculate_power_spectrum_u(
+                frequencies, u_star, f_nondimensional
+            )
+            if direction == "u"
+            else self.simulator.calculate_power_spectrum_w(
+                frequencies, u_star, f_nondimensional
+            )
+        )
+        return frequencies, S_theory
 
-    
-    def plot_cross_correlation(self, wind_samples, positions, wind_speeds, 
-                              save_path=None, show=True, direction="u", 
-                              indices=None, downsample=1, **kwargs):
+    def plot_cross_correlation(
+        self,
+        wind_samples,
+        positions,
+        wind_speeds,
+        save_path=None,
+        show=True,
+        direction="u",
+        indices=None,
+        downsample=1,
+        **kwargs,
+    ):
         """绘制互相关函数并与理论值比较（优化版本）"""
         n = wind_samples.shape[0]
-        
+
         if downsample > 1:
             wind_samples = wind_samples[:, ::downsample]
             dt = self.params["dt"] * downsample
         else:
             dt = self.params["dt"]
-            
+
         self.key, subkey = random.split(self.key)
         if indices is None:
             idx = random.randint(subkey, (1,), 0, n).item()
@@ -142,33 +179,32 @@ class JaxWindVisualizer:
             pass
         else:
             raise ValueError("indices必须是整数或两个整数的元组")
-            
+
         i, j = indices
         data_i = wind_samples[i]
         data_j = wind_samples[j]
-        
+
         # 计算实际互相关函数
         correlation = self._compute_correlation(data_i, data_j)
         lags = jnp.arange(-len(data_i) + 1, len(data_i))
         lag_times = lags * dt
-        
+
         # 提取位置信息
         x_i, y_i, z_i = positions[i]
         x_j, y_j, z_j = positions[j]
         U_zi, U_zj = wind_speeds[i], wind_speeds[j]
-        
+
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
-        
+
         frequencies = self.simulator.calculate_simulation_frequency(N, dw)
-        
+
         spectrum_func = (
             self.simulator.calculate_power_spectrum_u
             if direction == "u"
             else self.simulator.calculate_power_spectrum_w
         )
-        
 
         # 计算各点的摩阻速度
         u_star_i = self.simulator.calculate_friction_velocity(
@@ -216,7 +252,6 @@ class JaxWindVisualizer:
         )
         theo_lags = jnp.arange(-M // 2, M // 2)
         theo_lag_times = theo_lags * dt
-        
 
         fig, ax = plt.subplots(figsize=(12, 8))
         mid = len(correlation) // 2
