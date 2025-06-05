@@ -15,6 +15,11 @@ Key features include:
 - Visualization tools for spectral analysis and correlation validation
 - Configurable simulation parameters
 
+## Representative Results
+
+![Simulated Power Spectral Density](./img/wsamples-psd.png)
+
+
 ## Performance Comparison
 
 Time comparison of wind field simulation using JAX, PyTorch, and CPU implementations. The results demonstrate the significant performance advantage of GPU-accelerated methods over traditional CPU-based approaches.
