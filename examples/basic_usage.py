@@ -3,9 +3,9 @@ import os
 import time
 import argparse
 import logging
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import numpy as np
 from stochastic_wind_simulate import get_simulator, get_visualizer
 
 logging.basicConfig(
@@ -40,20 +40,18 @@ def main():
     n = 200  # 模拟点数量
     Z = 30.0  # 高度(m)
 
+    positions = np.zeros((n, 3))
+    positions[:, 0] = np.linspace(0, 100, n)
+    positions[:, -1] = Z
+
     if backend == "jax":
         import jax.numpy as jnp
-
-        positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-        positions = positions.at[:, 0].set(jnp.linspace(0, 100, n))
-        positions = positions.at[:, -1].set(Z)
+        positions = jnp.array(positions)
 
     elif backend == "torch":
         import torch
-        import numpy as np
+        positions = torch.from_numpy(positions)
 
-        positions = torch.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-        positions[:, 0] = torch.linspace(0, 100, n)
-        positions[:, -1] = Z
 
     # 各点平均风速
     wind_speeds = positions[:, 0] * 0.0 + 25.0  # 模拟线性变化的平均风速
@@ -82,12 +80,12 @@ def main():
     visualizer.plot_psd(
         u_samples, positions[:, -1], show_num=6, show=True, direction="u"
     )
-    # visualizer.plot_psd(
-    #     w_samples, positions[:, -1], show_num=6, show=True, direction="w"
-    # )
+    visualizer.plot_psd(
+        w_samples, positions[:, -1], show_num=6, show=True, direction="w"
+    )
 
     visualizer.plot_cross_correlation(
-        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 2)
+        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 1)
     )
     visualizer.plot_cross_correlation(
         w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 1)

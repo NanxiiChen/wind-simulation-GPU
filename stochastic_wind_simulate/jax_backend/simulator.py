@@ -183,6 +183,9 @@ class JaxWindSimulator:
         frequencies - 频率数组
         """
         self.key, subkey = random.split(self.key)
+        if not isinstance(positions, jnp.ndarray):
+            positions = jnp.array(positions)
+            
         return self._simulate_fluctuating_wind(
             positions, wind_speeds, subkey, direction
         )

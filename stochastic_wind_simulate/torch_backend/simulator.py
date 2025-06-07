@@ -234,6 +234,8 @@ class TorchWindSimulator:
         wind_samples - 形状为(n, M)的数组，表示各点的脉动风时程
         frequencies - 频率数组
         """
+        if not isinstance(positions, Tensor):
+            positions = torch.from_numpy(positions)
         return self._simulate_fluctuating_wind(positions, wind_speeds, direction)
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
