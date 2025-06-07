@@ -6,7 +6,6 @@ from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
 
 
-
 class JaxWindSimulator:
     """随机风场模拟器类"""
 
@@ -110,9 +109,15 @@ class JaxWindSimulator:
         num_freqs = len(frequencies)
 
         # 计算各点的摩阻速度和功率谱（与原代码相同）
-        u_stars = vmap(lambda z: self.calculate_friction_velocity(
-            z, self.params["U_d"], self.params["z_0"], self.params["z_d"], self.params["K"],
-        ))(positions[:, 2])
+        u_stars = vmap(
+            lambda z: self.calculate_friction_velocity(
+                z,
+                self.params["U_d"],
+                self.params["z_0"],
+                self.params["z_d"],
+                self.params["K"],
+            )
+        )(positions[:, 2])
 
         f_values_all = vmap(
             lambda freq: vmap(lambda z: self.calculate_f(freq, z, self.params["U_d"]))(
@@ -135,31 +140,54 @@ class JaxWindSimulator:
         y_j = jnp.expand_dims(positions[:, 1], 0).repeat(n, axis=0)  # [n, n]
         z_i = jnp.expand_dims(positions[:, 2], 1).repeat(n, axis=1)  # [n, n]
         z_j = jnp.expand_dims(positions[:, 2], 0).repeat(n, axis=0)  # [n, n]
-        
+
         U_i = jnp.expand_dims(wind_speeds, 1).repeat(n, axis=1)  # [n, n]
         U_j = jnp.expand_dims(wind_speeds, 0).repeat(n, axis=0)  # [n, n]
-        
-        # 一次性计算所有频率点的互谱矩阵
-        def compute_matrix_for_all_freqs(freqs_idx):
-            freq = frequencies[freqs_idx]
-            
-            # 计算相干函数矩阵 - 所有点对同时计算
-            coherence = self.calculate_coherence(
-                x_i, x_j, y_i, y_j, z_i, z_j, 
-                freq, U_i, U_j,
-                self.params["C_x"], self.params["C_y"], self.params["C_z"]
-            )
-            
-            # 计算互谱密度 - 使用广播计算
-            S_i = S_values_all[freqs_idx].reshape(n, 1)  # [n, 1]
-            S_j = S_values_all[freqs_idx].reshape(1, n)  # [1, n]
-            cross_spectrum = jnp.sqrt(S_i * S_j) * coherence
-            
+
+        @jit
+        def compute_matrix_for_all_freqs(s_values, coherence):
+            """计算所有频率点的互谱密度矩阵"""
+            S_i = s_values.reshape(n, 1)
+            S_j = s_values.reshape(1, n)
+            cross_spectrum = self.calculate_cross_spectrum(S_i, S_j, coherence)
             return cross_spectrum
-        
-        # 对所有频率点向量化执行
-        S_matrices = vmap(compute_matrix_for_all_freqs)(jnp.arange(num_freqs))
-        
+
+        cohenrence_all = vmap(
+            self.calculate_coherence,
+            in_axes=(
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                0,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )(
+            x_i,
+            x_j,
+            y_i,
+            y_j,
+            z_i,
+            z_j,
+            frequencies,
+            U_i,
+            U_j,
+            self.params["C_x"],
+            self.params["C_y"],
+            self.params["C_z"],
+        )
+
+        S_matrices = vmap(compute_matrix_for_all_freqs, in_axes=(0, 0))(
+            S_values_all, cohenrence_all
+        )
+
+
         return S_matrices
 
     def simulate_wind(self, positions, wind_speeds, direction="u"):
@@ -178,7 +206,7 @@ class JaxWindSimulator:
         self.key, subkey = random.split(self.key)
         if not isinstance(positions, jnp.ndarray):
             positions = jnp.array(positions)
-            
+
         return self._simulate_fluctuating_wind(
             positions, wind_speeds, subkey, direction
         )
@@ -213,28 +241,26 @@ class JaxWindSimulator:
         key, subkey = random.split(key)
         phi = random.uniform(subkey, (n, n, N), minval=0, maxval=2 * jnp.pi)
 
-
-        @partial(jit, static_argnums=(1,2,3))
+        @partial(jit, static_argnums=(1, 2, 3))
         def compute_B_for_point(j, N, M, n, H_matrices, phi):
             # 创建掩码
             row_indices = jnp.arange(n)
             mask = row_indices <= j
             H_terms = H_matrices[:, j, :]
             H_masked = H_terms * mask
-            
+
             # 转换相位到正确形状
             phi_masked = phi[j, :, :] * mask.reshape(n, 1)
             exp_terms = jnp.exp(1j * phi_masked.transpose(1, 0))
-            
-            B_values = jnp.einsum('nl,nl->n', 
-                                H_masked.reshape(N, n), 
-                                exp_terms * mask)
-            
+
+            B_values = jnp.einsum("nl,nl->n", H_masked.reshape(N, n), exp_terms * mask)
+
             return jnp.pad(B_values, (0, M - N), mode="constant")
 
         # 对每个点并行计算B
-        B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None)
-                 )(jnp.arange(n), N, M, n, H_matrices, phi)
+        B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None))(
+            jnp.arange(n), N, M, n, H_matrices, phi
+        )
         G = vmap(jit(jnp.fft.fft))(B)
 
         # 计算风场样本
