@@ -3,6 +3,7 @@ import logging
 import argparse
 import sys
 import os
+import numpy as np
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,7 +19,7 @@ def main():
     arg_parser.add_argument(
         "--backend",
         type=str,
-        choices=["jax", "torch"],
+        choices=["jax", "torch", "numpy"],
         default="jax",
         help="选择后端库: jax 或 torch (默认: jax)",
     )
@@ -30,25 +31,27 @@ def main():
     with open(f"time_cost_{backend}.txt", "w") as f:
         f.write("n_samples,time_cost(s)\n")
 
-    ns = [2, 5, 10, 30, 50, 100, 150, 200]
+    ns = [2, 5, 10, 30, 50, 100, 150, 200, 300]
     time_costs = []
     Z = 30.0
     for i, n in enumerate(ns):
+        positions = np.zeros((n, 3))
+        positions[:, 0] = np.linspace(0, 100, n)
+        positions[:, -1] = Z
 
         if backend == "jax":
             import jax.numpy as jnp
-
-            positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-            positions = positions.at[:, 0].set(jnp.linspace(0, 100, n))
-            positions = positions.at[:, -1].set(Z)
+            positions = jnp.array(positions)
 
         elif backend == "torch":
             import torch
-            import numpy as np
-
-            positions = torch.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-            positions[:, 0] = torch.linspace(0, 100, n)
-            positions[:, -1] = Z
+            positions = torch.from_numpy(positions)
+        
+        elif backend == "numpy":
+            # positions 已经是 numpy 数组，无需转换
+            pass
+        else:
+            raise ValueError(f"Unsupported backend: {backend}")
 
         wind_speeds = positions[:, 0] * 0.2 + 25.0  # 模拟线性变化的平均风速
 

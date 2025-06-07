@@ -21,9 +21,9 @@ def main():
     arg_parser.add_argument(
         "--backend",
         type=str,
-        choices=["jax", "torch"],
+        choices=["jax", "torch", "numpy"],
         default="jax",
-        help="选择后端库: jax 或 torch (默认: jax)",
+        help="选择后端库: jax 或 torch 或 numpy (默认: jax)",
     )
     args = arg_parser.parse_args()
     backend = args.backend
@@ -51,6 +51,12 @@ def main():
     elif backend == "torch":
         import torch
         positions = torch.from_numpy(positions)
+    
+    elif backend == "numpy":
+        # positions 已经是 numpy 数组，无需转换
+        pass
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
 
 
     # 各点平均风速

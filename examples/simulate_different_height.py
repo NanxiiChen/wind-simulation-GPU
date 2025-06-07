@@ -21,9 +21,9 @@ def main():
     arg_parser.add_argument(
         "--backend",
         type=str,
-        choices=["jax", "torch"],
+        choices=["jax", "torch", "numpy"],
         default="jax",
-        help="选择后端库: jax 或 torch (默认: jax)",
+        help="选择后端库: jax 或 torch 或 numpy (默认: jax)",
     )
     args = arg_parser.parse_args()
     backend = args.backend
@@ -39,21 +39,24 @@ def main():
     # 定义模拟点的位置和平均风速
     n = 100  # 模拟点数量
     Z = 200.0  # 最高高度(m)
+    positions = np.zeros((n, 3))  # 初始化位置数组，(x, y, z)
+    positions[:, 0] = 50  # x坐标固定为50
+    positions[:, -1] = np.linspace(20, Z, n)  # z坐标从20到Z均匀分布
 
     if backend == "jax":
         import jax.numpy as jnp
-
-        positions = jnp.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-        positions = positions.at[:, 0].set(50)
-        positions = positions.at[:, -1].set(jnp.linspace(20, Z, n))
+        positions = jnp.array(positions)
 
     elif backend == "torch":
         import torch
         import numpy as np
+        positions = torch.from_numpy(positions)
 
-        positions = torch.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-        positions[:, 0] = 50
-        positions[:, -1] = torch.linspace(20, Z, n)
+    elif backend == "numpy":
+        # positions 已经是 numpy 数组，无需转换
+        pass
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
 
     # 各点平均风速
     wind_speeds = positions[:, 2] * 0.05 + 25.0  # 模拟线性变化的平均风速

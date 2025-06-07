@@ -12,8 +12,11 @@ def get_simulator(backend="jax", **kwargs):
     elif backend.lower() == "torch":
         from .torch_backend.simulator import TorchWindSimulator
         return TorchWindSimulator(**kwargs)
+    elif backend.lower() == "numpy":
+        from .numpy_backend.simulator import NumpyWindSimulator
+        return NumpyWindSimulator(**kwargs)
     else:
-        raise ValueError(f"不支持的后端: {backend}，目前支持 'jax' 和 'torch'")
+        raise ValueError(f"不支持的后端: {backend}")
 
 def get_visualizer(backend="jax", **kwargs):
     """
@@ -29,5 +32,8 @@ def get_visualizer(backend="jax", **kwargs):
     elif backend.lower() == "torch":
         from .torch_backend.visualizer import TorchWindVisualizer
         return TorchWindVisualizer(**kwargs)
+    elif backend.lower() == "numpy":
+        from .numpy_backend.visualizer import NumpyWindVisualizer
+        return NumpyWindVisualizer(**kwargs)
     else:
-        raise ValueError(f"不支持的后端: {backend}，目前支持 'jax' 和 'torch'")
+        raise ValueError(f"不支持的后端: {backend}")
