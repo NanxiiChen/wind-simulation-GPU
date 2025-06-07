@@ -1,10 +1,8 @@
-from typing import Dict, Tuple
+from typing import Dict
 
 import torch
 import torch.func as func
 from torch import Tensor
-import numpy as np
-import math
 
 
 class TorchWindSimulator:
@@ -240,14 +238,10 @@ class TorchWindSimulator:
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
         """风场模拟的内部实现"""
-        # 转换为PyTorch张量
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
 
         n = positions.shape[0]
-        # N = self.params["N"]
-        # M = self.params["M"]
-        # dw = self.params["dw"]
         N = self._to_tensor(self.params["N"], device=self.device)
         M = self._to_tensor(self.params["M"], device=self.device)
         dw = self._to_tensor(self.params["dw"], device=self.device)

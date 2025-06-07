@@ -5,14 +5,7 @@ import jax.numpy as jnp
 from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
 
-import os
-# 设置XLA优化选项
-os.environ['XLA_FLAGS'] = "--xla_gpu_autotune_level=2 --xla_gpu_cuda_data_dir=/usr/local/cuda"
-from jax import config
-# 关闭JIT中的一些检查以提升性能
-config.update("jax_disable_jit", False)
-config.update("jax_debug_nans", False)
-config.update("jax_enable_x64", False)  # 使用f32而非f64提高速度
+
 
 class JaxWindSimulator:
     """随机风场模拟器类"""
