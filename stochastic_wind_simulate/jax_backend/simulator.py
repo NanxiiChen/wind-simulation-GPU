@@ -112,7 +112,7 @@ class JaxWindSimulator:
         return jnp.arange(1, N + 1) * dw - dw / 2
 
     def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
-        """构建互谱密度矩阵 S(w) - 完全网格化向量化实现"""
+        """构建互谱密度矩阵 S(w)"""
         n = positions.shape[0]
         num_freqs = len(frequencies)
 
