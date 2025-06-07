@@ -56,7 +56,7 @@ def main():
         positions[:, -1] = Z
 
     # 各点平均风速
-    wind_speeds = positions[:, 0] * 0.2 + 25.0  # 模拟线性变化的平均风速
+    wind_speeds = positions[:, 0] * 0.0 + 25.0  # 模拟线性变化的平均风速
 
     # 记录开始时间
     start_time = time.time()
@@ -82,12 +82,12 @@ def main():
     visualizer.plot_psd(
         u_samples, positions[:, -1], show_num=6, show=True, direction="u"
     )
-    visualizer.plot_psd(
-        w_samples, positions[:, -1], show_num=6, show=True, direction="w"
-    )
+    # visualizer.plot_psd(
+    #     w_samples, positions[:, -1], show_num=6, show=True, direction="w"
+    # )
 
     visualizer.plot_cross_correlation(
-        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 1)
+        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 2)
     )
     visualizer.plot_cross_correlation(
         w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 1)

@@ -100,36 +100,40 @@ class TorchWindSimulator:
 
     def calculate_coherence(
         self,
-        x_i: float,
-        x_j: float,
-        y_i: float,
-        y_j: float,
-        z_i: float,
-        z_j: float,
+        x_i: Tensor,
+        x_j: Tensor,
+        y_i: Tensor,
+        y_j: Tensor,
+        z_i: Tensor,
+        z_j: Tensor,
         w: Tensor,
-        U_zi: float,
-        U_zj: float,
+        U_zi: Tensor,
+        U_zj: Tensor,
         C_x: float,
         C_y: float,
         C_z: float,
     ) -> Tensor:
         """计算空间相关函数 Coh"""
-        # 使用Python的math模块计算标量部分
-        distance_term = math.sqrt(
-            C_x**2 * (x_i - x_j) ** 2
-            + C_y**2 * (y_i - y_j) ** 2
-            + C_z**2 * (z_i - z_j) ** 2
+        # 转换为张量
+        C_x_t = self._to_tensor(C_x, device=self.device)
+        C_y_t = self._to_tensor(C_y, device=self.device)
+        C_z_t = self._to_tensor(C_z, device=self.device)
+        
+        # 完全使用PyTorch计算
+        distance_term = torch.sqrt(
+            C_x_t**2 * (x_i - x_j) ** 2
+            + C_y_t**2 * (y_i - y_j) ** 2
+            + C_z_t**2 * (z_i - z_j) ** 2
         )
 
-        # 增加数值稳定性保护，避免除以接近零的值
-        denominator = 2 * math.pi * (U_zi + U_zj)
-        safe_denominator = max(denominator, 1e-8)
+        # 使用PyTorch的π常数
+        denominator = 2 * torch.pi * (U_zi + U_zj)
+        safe_denominator = torch.maximum(
+            denominator, 
+            torch.tensor(1e-8, device=self.device)
+        )
 
-        # 将标量转为张量后完成剩余计算
-        distance_term_tensor = self._to_tensor(distance_term, device=self.device)
-        safe_denominator_tensor = self._to_tensor(safe_denominator, device=self.device)
-
-        return torch.exp(-2 * w * distance_term_tensor / safe_denominator_tensor)
+        return torch.exp(-2 * w * distance_term / safe_denominator)
 
     def calculate_cross_spectrum(
         self, S_ii: Tensor, S_jj: Tensor, coherence: Tensor
@@ -190,55 +194,30 @@ class TorchWindSimulator:
         for freq_idx in range(num_freqs):
             S_matrices[freq_idx].diagonal().copy_(S_values_all[freq_idx])
 
+        # 创建网格以计算所有点对
+        x_i = positions[:, 0].unsqueeze(1).expand(n, n)  # [n, n]
+        x_j = positions[:, 0].unsqueeze(0).expand(n, n)  # [n, n]
+        y_i = positions[:, 1].unsqueeze(1).expand(n, n)  # [n, n]
+        y_j = positions[:, 1].unsqueeze(0).expand(n, n)  # [n, n]
+        z_i = positions[:, 2].unsqueeze(1).expand(n, n)  # [n, n]
+        z_j = positions[:, 2].unsqueeze(0).expand(n, n)  # [n, n]
+        U_i = wind_speeds.unsqueeze(1).expand(n, n)  # [n, n]
+        U_j = wind_speeds.unsqueeze(0).expand(n, n)  # [n, n]
+
         # 为每个频率点批量计算互谱
         for freq_idx in range(num_freqs):
             freq = frequencies[freq_idx]
 
-            # 创建网格以计算所有点对
-            x_i = positions[:, 0].unsqueeze(1).expand(n, n)  # [n, n]
-            x_j = positions[:, 0].unsqueeze(0).expand(n, n)  # [n, n]
-            y_i = positions[:, 1].unsqueeze(1).expand(n, n)  # [n, n]
-            y_j = positions[:, 1].unsqueeze(0).expand(n, n)  # [n, n]
-            z_i = positions[:, 2].unsqueeze(1).expand(n, n)  # [n, n]
-            z_j = positions[:, 2].unsqueeze(0).expand(n, n)  # [n, n]
-            U_i = wind_speeds.unsqueeze(1).expand(n, n)  # [n, n]
-            U_j = wind_speeds.unsqueeze(0).expand(n, n)  # [n, n]
-
-            # 计算所有点对的距离参数
-            C_x_t = self._to_tensor(self.params["C_x"], device=self.device)
-            C_y_t = self._to_tensor(self.params["C_y"], device=self.device)
-            C_z_t = self._to_tensor(self.params["C_z"], device=self.device)
-
-            # 计算距离项
-            distance_term = torch.sqrt(
-                C_x_t**2 * (x_i - x_j) ** 2
-                + C_y_t**2 * (y_i - y_j) ** 2
-                + C_z_t**2 * (z_i - z_j) ** 2
+            coh = self.calculate_coherence(
+                x_i, x_j, y_i, y_j, z_i, z_j, freq,
+                U_i, U_j,
+                self.params["C_x"], self.params["C_y"], self.params["C_z"]
             )
-
-            # 计算安全的分母
-            denominator = 2 * torch.pi * (U_i + U_j)
-            safe_denominator = torch.maximum(
-                denominator, self._to_tensor(1e-8, device=self.device)
+            S_matrices[freq_idx] = self.calculate_cross_spectrum(
+                S_values_all[freq_idx].unsqueeze(1).expand(n, n),  # S_ii
+                S_values_all[freq_idx].unsqueeze(0).expand(n, n),  # S_jj
+                coh
             )
-
-            # 计算相干函数
-            coh = torch.exp(-2 * freq * distance_term / safe_denominator)
-
-            # 计算互谱
-            S_i = S_values_all[freq_idx].unsqueeze(1).expand(n, n)
-            S_j = S_values_all[freq_idx].unsqueeze(0).expand(n, n)
-            cross_spec = torch.sqrt(S_i * S_j) * coh
-
-            # 只保留上三角部分，避免重复计算
-            mask = torch.triu(torch.ones(n, n, device=self.device), diagonal=1).bool()
-            S_matrices[freq_idx][mask] = cross_spec[mask]
-
-            # 利用对称性填充下三角部分
-            S_matrices[freq_idx] = S_matrices[freq_idx] + S_matrices[freq_idx].t()
-            # 修正对角线(减去重复添加的对角线元素)
-            diag_indices = torch.arange(n, device=self.device)
-            S_matrices[freq_idx, diag_indices, diag_indices] = S_values_all[freq_idx]
 
         return S_matrices
 
@@ -307,7 +286,6 @@ class TorchWindSimulator:
         # 初始化 B 矩阵
         B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
-        # 方法1：部分向量化 - 保留外层循环，向量化内层计算
         for j in range(n):
             # 使用 einsum 一次计算所有频率点的贡献
             # 注意维度顺序: H_matrices 是 [N, n, n]，我们需要 [:, j, :j+1]

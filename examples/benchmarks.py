@@ -30,7 +30,7 @@ def main():
     with open(f"time_cost_{backend}.txt", "w") as f:
         f.write("n_samples,time_cost(s)\n")
 
-    ns = [5, 10, 30, 50, 100, 200]
+    ns = [2, 5, 10, 30, 50, 100, 150, 200]
     time_costs = []
     Z = 30.0
     for i, n in enumerate(ns):
