@@ -28,10 +28,14 @@ def main():
     logging.info(f"Using backend: {backend}")
 
     simulator = get_simulator(backend=backend, key=42)
+    simulator.update_parameters(
+        M=3000, N=1500, T=600, dt=0.2
+    )
+
     with open(f"time_cost_{backend}.txt", "w") as f:
         f.write("n_samples,time_cost(s)\n")
 
-    ns = [2, 5, 10, 30, 50, 100, 150, 200, 300]
+    ns = [2, 5, 10, 30, 50, 100, 150, 200, 300, 500]
     time_costs = []
     Z = 30.0
     for i, n in enumerate(ns):
