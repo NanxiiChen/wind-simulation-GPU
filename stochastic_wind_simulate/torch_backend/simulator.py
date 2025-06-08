@@ -260,14 +260,10 @@ class TorchWindSimulator:
 
         # 对每个频率点进行Cholesky分解 - 使用 vmap 代替循环
         def cholesky_with_reg(S):
-            try:
-                return torch.linalg.cholesky(
-                    S + torch.eye(n, device=self.device) * 1e-12
-                )
-            except RuntimeError:
-                return torch.linalg.cholesky(
-                    S + torch.eye(n, device=self.device) * 1e-8
-                )
+            return torch.linalg.cholesky(
+                S + torch.eye(n, device=self.device) * 1e-12
+            )
+
 
         H_matrices = func.vmap(cholesky_with_reg)(S_matrices)
 

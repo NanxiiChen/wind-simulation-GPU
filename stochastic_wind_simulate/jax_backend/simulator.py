@@ -102,38 +102,25 @@ class JaxWindSimulator:
         """计算模拟频率数组"""
         # return jnp.array([(l - 0.5) * dw for l in range(1, N + 1)])
         return jnp.arange(1, N + 1) * dw - dw / 2
+    
+    @partial(jit, static_argnums=(0,3))
+    def calculate_spectrum_for_position(self, freq, positions, spectrum_func):
+        u_stars = self.calculate_friction_velocity(
+            positions[:, 2],
+            self.params["U_d"],
+            self.params["z_0"],
+            self.params["z_d"],
+            self.params["K"],
+        )
+        f_values = self.calculate_f(freq, positions[:, 2], self.params["U_d"])
+        S_values = spectrum_func(freq, u_stars, f_values)
+        return S_values
+
 
     def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
         """构建互谱密度矩阵 S(w)"""
         n = positions.shape[0]
-        num_freqs = len(frequencies)
 
-        # 计算各点的摩阻速度和功率谱（与原代码相同）
-        u_stars = vmap(
-            lambda z: self.calculate_friction_velocity(
-                z,
-                self.params["U_d"],
-                self.params["z_0"],
-                self.params["z_d"],
-                self.params["K"],
-            )
-        )(positions[:, 2])
-
-        f_values_all = vmap(
-            lambda freq: vmap(lambda z: self.calculate_f(freq, z, self.params["U_d"]))(
-                positions[:, 2]
-            )
-        )(frequencies)
-
-        S_values_all = vmap(
-            lambda freq_idx: vmap(
-                lambda u_star, f_val: spectrum_func(
-                    frequencies[freq_idx], u_star, f_val
-                )
-            )(u_stars, f_values_all[freq_idx])
-        )(jnp.arange(num_freqs))
-
-        # 创建扩展后的网格坐标 (类似PyTorch实现)
         x_i = jnp.expand_dims(positions[:, 0], 1).repeat(n, axis=1)  # [n, n]
         x_j = jnp.expand_dims(positions[:, 0], 0).repeat(n, axis=0)  # [n, n]
         y_i = jnp.expand_dims(positions[:, 1], 1).repeat(n, axis=1)  # [n, n]
@@ -144,50 +131,26 @@ class JaxWindSimulator:
         U_i = jnp.expand_dims(wind_speeds, 1).repeat(n, axis=1)  # [n, n]
         U_j = jnp.expand_dims(wind_speeds, 0).repeat(n, axis=0)  # [n, n]
 
-        @jit
-        def compute_matrix_for_all_freqs(s_values, coherence):
-            """计算所有频率点的互谱密度矩阵"""
-            S_i = s_values.reshape(n, 1)
-            S_j = s_values.reshape(1, n)
-            cross_spectrum = self.calculate_cross_spectrum(S_i, S_j, coherence)
+        @partial(jit, static_argnums=(2,))
+        def _build_spectrum_for_position(freq, positions, spectrum_func):
+            s_values = self.calculate_spectrum_for_position(
+                freq, positions, spectrum_func
+            )
+            s_i = s_values.reshape(n, 1)  # [n, 1]
+            s_j = s_values.reshape(1, n)  # [1, n]
+            coherence = self.calculate_coherence(
+                x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
+                self.params["C_x"], self.params["C_y"], self.params["C_z"]
+            )
+            cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
             return cross_spectrum
-
-        cohenrence_all = vmap(
-            self.calculate_coherence,
-            in_axes=(
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                0,
-                None,
-                None,
-                None,
-                None,
-                None,
-            ),
-        )(
-            x_i,
-            x_j,
-            y_i,
-            y_j,
-            z_i,
-            z_j,
-            frequencies,
-            U_i,
-            U_j,
-            self.params["C_x"],
-            self.params["C_y"],
-            self.params["C_z"],
-        )
-
-        S_matrices = vmap(compute_matrix_for_all_freqs, in_axes=(0, 0))(
-            S_values_all, cohenrence_all
-        )
-
-
+        
+        # 对每个频率点并行计算互谱密度矩阵
+        S_matrices = vmap(
+            _build_spectrum_for_position,
+            in_axes=(0, None, None),
+        )(frequencies, positions, spectrum_func)
+        
         return S_matrices
 
     def simulate_wind(self, positions, wind_speeds, direction="u"):
