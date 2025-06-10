@@ -224,7 +224,7 @@ class JaxWindSimulator:
         B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None))(
             jnp.arange(n), N, M, n, H_matrices, phi
         )
-        G = vmap(jit(jnp.fft.fft))(B)
+        G = vmap(jit(jnp.fft.ifft))(B)*M
 
         # 计算风场样本
         @jit
@@ -235,6 +235,7 @@ class JaxWindSimulator:
             # return 2 * jnp.sqrt(dw / (2 * jnp.pi)) * jnp.real(terms)
             # return 2 * jnp.sqrt(2) * jnp.sqrt(dw / (2 * jnp.pi)) * jnp.real(terms)
             return jnp.sqrt(2 * dw) * jnp.real(terms)
+
 
         wind_samples = vmap(compute_samples_for_point)(jnp.arange(n))
 

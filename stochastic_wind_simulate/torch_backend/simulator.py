@@ -288,7 +288,7 @@ class TorchWindSimulator:
             B[j, :N_int] = torch.einsum("li,li->l", H_slice, exp_slice)
 
         # 计算 FFT
-        G = torch.fft.fft(B, dim=1)
+        G = torch.fft.ifft(B, dim=1) * M_int
 
         # 计算风场样本 - 可以保留向量化
         p_indices = torch.arange(M, device=self.device)

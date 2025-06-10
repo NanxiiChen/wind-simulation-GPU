@@ -91,10 +91,14 @@ def main():
     )
 
     visualizer.plot_cross_correlation(
-        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 1)
+        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 2)
     )
     visualizer.plot_cross_correlation(
-        w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 1)
+        w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 2)
+    )
+
+    visualizer.plot_cross_coherence(
+        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1,2)
     )
 
 

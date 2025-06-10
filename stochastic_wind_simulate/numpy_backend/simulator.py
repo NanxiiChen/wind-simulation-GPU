@@ -216,7 +216,7 @@ class NumpyWindSimulator:
             B[j, :N] = B_values
         
         # FFT变换
-        G = np.fft.fft(B)
+        G = np.fft.ifft(B) * M
         
         # 计算风场样本
         wind_samples = np.zeros((n, M))

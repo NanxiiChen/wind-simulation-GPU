@@ -298,3 +298,106 @@ class JaxWindVisualizer:
             plt.close()
 
         return indices
+        
+    def plot_cross_coherence(
+        self,
+        wind_samples,
+        positions,
+        wind_speeds,
+        save_path=None,
+        show=True,
+        direction="u",
+        indices=None,
+        downsample=1,
+        **kwargs,
+    ):
+        """
+        绘制互相干函数图
+        """
+        n = positions.shape[0]
+        # 处理降采样
+        if downsample > 1:
+            wind_samples = wind_samples[:, ::downsample]
+            dt = self.params["dt"] * downsample
+        else:
+            dt = self.params["dt"]
+    
+        # 选择要分析的点对
+        self.key, subkey = random.split(self.key)
+        if indices is None:
+            # 如果未指定，随机选择一对点
+            idx1 = random.randint(subkey, (1,), 0, n).item()
+            self.key, subkey = random.split(self.key)
+            idx2 = random.randint(subkey, (1,), 0, n).item()
+            indices = idx1, idx2
+        elif isinstance(indices, int):
+            # 如果是单个索引，选择该点与自身
+            indices = (indices, indices)
+        elif isinstance(indices, tuple) and len(indices) == 2:
+            pass
+        else:
+            raise ValueError("indices必须是整数或两个整数的元组")
+        
+        i, j = indices
+        data_i = wind_samples[i]
+        data_j = wind_samples[j]
+        # 计算实测相干函数 - 使用Welch方法
+        nperseg = kwargs.get("nperseg", min(1024, len(data_i) // 4))
+        
+        # 计算自谱和互谱
+        fxx, Pxx = jax.scipy.signal.welch(
+            data_i, fs=1/dt, nperseg=nperseg, 
+            scaling="density", window="hann",
+        )
+        fyy, Pyy = jax.scipy.signal.welch(
+            data_j, fs=1/dt, nperseg=nperseg, 
+            scaling="density", window="hann",
+        )
+        fxy, Pxy = jax.scipy.signal.csd(
+            data_i, data_j, fs=1/dt, nperseg=nperseg,
+            scaling="density", window="hann",
+        )
+
+        measured_coherence = jnp.abs(Pxy)**2 / (Pxx * Pyy +1e-10)
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.loglog(fxx, Pxx, label=f"PSD of Point {i+1}")
+        ax.loglog(fyy, Pyy, label=f"PSD of Point {j+1}")
+        ax.loglog(fxy, Pxy, label=f"CSD of Points {i+1} and {j+1}")
+        ax.set(
+            title=f"Power Spectral Density and Cross Spectral Density of {direction.upper()} Wind at Points {i+1} and {j+1}",
+            xlabel="Frequency (Hz)",
+            ylabel="Power Spectral Density (m²/s²)",
+        )
+        plt.show(block=False)
+
+
+        x_i, y_i, z_i = positions[i]
+        x_j, y_j, z_j = positions[j]
+        U_zi, U_zj = wind_speeds[i], wind_speeds[j]
+        theoretical_coherence = vmap(
+            lambda freq: self.simulator.calculate_coherence(
+                x_i, x_j, y_i, y_j, z_i, z_j,
+                2 * jnp.pi * freq, U_zi, U_zj,
+                self.params["C_x"], self.params["C_y"], self.params["C_z"]
+            )
+        )(fxx)
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.semilogy(fxy, measured_coherence, label="Measured Coherence")
+        ax.semilogy(fxx, theoretical_coherence, '--', color='black', linewidth=2, label="Theoretical Coherence")
+        ax.set(
+            title=f"Cross Coherence of {direction.upper()} Wind at Points {i+1} and {j+1}",
+            xlabel="Frequency (Hz)",
+            ylabel="Coherence",
+        )
+        ax.grid(True, which="both", ls="-", alpha=0.6)
+        ax.legend()
+        if save_path:
+            plt.savefig(save_path)
+        if show:
+            plt.show()
+        else:
+            plt.close()
+
+        return indices
