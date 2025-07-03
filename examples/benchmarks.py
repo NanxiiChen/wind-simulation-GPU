@@ -15,13 +15,13 @@ logging.basicConfig(
 
 
 def main():
-    arg_parser = argparse.ArgumentParser(description="风场模拟器基准测试")
+    arg_parser = argparse.ArgumentParser(description="Wind field simulator benchmark test")
     arg_parser.add_argument(
         "--backend",
         type=str,
         choices=["jax", "torch", "numpy"],
         default="jax",
-        help="选择后端库: jax 或 torch (默认: jax)",
+        help="Choose backend library: jax or torch (default: jax)",
     )
     args = arg_parser.parse_args()
     backend = args.backend
@@ -52,12 +52,12 @@ def main():
             positions = torch.from_numpy(positions)
         
         elif backend == "numpy":
-            # positions 已经是 numpy 数组，无需转换
+            # positions is already a numpy array, no conversion needed
             pass
         else:
             raise ValueError(f"Unsupported backend: {backend}")
 
-        wind_speeds = positions[:, 0] * 0.2 + 25.0  # 模拟线性变化的平均风速
+        wind_speeds = positions[:, 0] * 0.2 + 25.0  # Simulate linearly varying mean wind speed
 
         start_time = time.time()
         u_samples, frequencies = simulator.simulate_wind(

@@ -6,53 +6,53 @@ from torch import Tensor
 
 
 class TorchWindSimulator:
-    """使用 PyTorch 实现的随机风场模拟器类"""
+    """Stochastic wind field simulator class implemented using PyTorch."""
 
     def __init__(self, key=0):
         """
-        初始化风场模拟器
+        Initialize the wind field simulator.
 
-        参数:
-        key - 随机数种子
+        Args:
+            key: Random number seed
         """
         self.seed = key
         torch.manual_seed(key)
 
-        # 设置计算设备
+        # Set computing device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.params = self._set_default_parameters()
 
     def _set_default_parameters(self) -> Dict:
-        """设置默认风场模拟参数"""
+        """Set default wind field simulation parameters."""
         params = {
-            "K": 0.4,  # 无量纲常数
-            "H_bar": 10.0,  # 周围建筑物平均高度(m)
-            "z_0": 0.05,  # 地表粗糙高度
-            "C_x": 16.0,  # x方向衰减系数
-            "C_y": 6.0,  # y方向衰减系数
-            "C_z": 10.0,  # z方向衰减系数
-            "w_up": 5.0,  # 截止频率(Hz)
-            "N": 3000,  # 频率分段数
-            "M": 6000,  # 时间点数(M=2N)
-            "T": 600,  # 模拟时长(s)
-            "dt": 0.1,  # 时间步长(s)
-            "U_d": 25.0,  # 设计基本风速(m/s)
+            "K": 0.4,  # Dimensionless constant
+            "H_bar": 10.0,  # Average height of surrounding buildings (m)
+            "z_0": 0.05,  # Surface roughness height
+            "C_x": 16.0,  # Decay coefficient in x direction
+            "C_y": 6.0,  # Decay coefficient in y direction
+            "C_z": 10.0,  # Decay coefficient in z direction
+            "w_up": 5.0,  # Cutoff frequency (Hz)
+            "N": 3000,  # Number of frequency segments
+            "M": 6000,  # Number of time points (M=2N)
+            "T": 600,  # Simulation duration (s)
+            "dt": 0.1,  # Time step (s)
+            "U_d": 25.0,  # Design basic wind speed (m/s)
         }
-        params["dw"] = params["w_up"] / params["N"]  # 频率增量
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # 计算零平面位移
+        params["dw"] = params["w_up"] / params["N"]  # Frequency increment
+        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
 
         return params
 
     def _to_tensor(self, value, device=None):
         """
-        将输入安全地转换为设备上的张量
+        Safely convert input to tensor on device.
 
-        参数:
-            value: 要转换的值（张量或其他类型）
-            device: 目标设备，默认使用类的设备
+        Args:
+            value: Value to convert (tensor or other type)
+            device: Target device, defaults to class device
 
-        返回:
-            在指定设备上的张量
+        Returns:
+            Tensor on specified device
         """
         if device is None:
             device = self.device
@@ -63,12 +63,12 @@ class TorchWindSimulator:
             return torch.tensor(value, device=device)
 
     def update_parameters(self, **kwargs):
-        """更新模拟参数"""
+        """Update simulation parameters."""
         for key, value in kwargs.items():
             if key in self.params:
                 self.params[key] = value
 
-        # 更新依赖参数
+        # Update dependent parameters
         self.params["dw"] = self.params["w_up"] / self.params["N"]
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
@@ -77,23 +77,23 @@ class TorchWindSimulator:
     def calculate_friction_velocity(
         self, Z: Tensor, U_d: float, z_0: float, z_d: float, K: float
     ) -> Tensor:
-        """计算风的摩阻速度 u_*"""
+        """Calculate wind friction velocity u_*."""
         return K * U_d / torch.log((Z - z_d) / z_0)
 
     def calculate_f(self, n: Tensor, Z: Tensor, U_d: float) -> Tensor:
-        """计算无量纲频率 f"""
+        """Calculate dimensionless frequency f."""
         return n * Z / U_d
 
     def calculate_power_spectrum_u(
         self, n: Tensor, u_star: Tensor, f: Tensor
     ) -> Tensor:
-        """计算顺风向脉动风功率谱密度 S_u(n)"""
+        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
         return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
 
     def calculate_power_spectrum_w(
         self, n: Tensor, u_star: Tensor, f: Tensor
     ) -> Tensor:
-        """计算竖向脉动风功率谱密度 S_w(n)"""
+        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
 
     def calculate_coherence(
@@ -111,20 +111,20 @@ class TorchWindSimulator:
         C_y: float,
         C_z: float,
     ) -> Tensor:
-        """计算空间相关函数 Coh"""
-        # 转换为张量
+        """Calculate spatial correlation function Coh."""
+        # Convert to tensor
         C_x_t = self._to_tensor(C_x, device=self.device)
         C_y_t = self._to_tensor(C_y, device=self.device)
         C_z_t = self._to_tensor(C_z, device=self.device)
         
-        # 完全使用PyTorch计算
+        # Compute using PyTorch entirely
         distance_term = torch.sqrt(
             C_x_t**2 * (x_i - x_j) ** 2
             + C_y_t**2 * (y_i - y_j) ** 2
             + C_z_t**2 * (z_i - z_j) ** 2
         )
 
-        # 使用PyTorch的π常数
+        # Use PyTorch π constant
         denominator = 2 * torch.pi * (U_zi + U_zj)
         safe_denominator = torch.maximum(
             denominator, 
@@ -136,18 +136,18 @@ class TorchWindSimulator:
     def calculate_cross_spectrum(
         self, S_ii: Tensor, S_jj: Tensor, coherence: Tensor
     ) -> Tensor:
-        """计算互谱密度函数 S_ij"""
+        """Calculate cross-spectral density function S_ij."""
         return torch.sqrt(S_ii * S_jj) * coherence
 
     def calculate_simulation_frequency(self, N: int, dw: float) -> Tensor:
-        """计算模拟频率数组"""
+        """Calculate simulation frequency array."""
         return torch.arange(1, N + 1, device=self.device) * dw - dw / 2
 
     def build_spectrum_matrix(
         self, positions: Tensor, wind_speeds: Tensor, frequencies: Tensor, spectrum_func
     ) -> Tensor:
         """
-        构建互谱密度矩阵 S(w) - 尽可能向量化实现
+        Build cross-spectral density matrix S(w) - vectorized implementation.
         """
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
@@ -156,7 +156,7 @@ class TorchWindSimulator:
         n = positions.shape[0]
         num_freqs = len(frequencies)
 
-        # 计算各点的摩阻速度
+        # Calculate friction velocity at each point
         u_stars = func.vmap(
             lambda z: self.calculate_friction_velocity(
                 z,
@@ -167,7 +167,7 @@ class TorchWindSimulator:
             )
         )(positions[:, 2])
 
-        # 计算所有频率点的无量纲频率 - 避免嵌套vmap
+        # Calculate dimensionless frequency for all frequency points - avoid nested vmap
         f_values_all = torch.zeros((num_freqs, n), device=self.device)
         for freq_idx in range(num_freqs):
             freq = frequencies[freq_idx]
@@ -175,7 +175,7 @@ class TorchWindSimulator:
                 lambda z: self.calculate_f(freq, z, self.params["U_d"])
             )(positions[:, 2])
 
-        # 计算所有频率点的功率谱密度 - 避免嵌套vmap
+        # Calculate power spectral density for all frequency points - avoid nested vmap
         S_values_all = torch.zeros((num_freqs, n), device=self.device)
         for freq_idx in range(num_freqs):
             freq = frequencies[freq_idx]
@@ -183,16 +183,16 @@ class TorchWindSimulator:
                 lambda u_star, f_val: spectrum_func(freq, u_star, f_val)
             )(u_stars, f_values_all[freq_idx])
 
-        # 创建互谱密度矩阵 - 完全向量化实现
+        # Create cross-spectral density matrix - fully vectorized implementation
         S_matrices = torch.zeros(
             (num_freqs, n, n), device=self.device, dtype=torch.float32
         )
 
-        # 将自功率谱放在对角线上
+        # Put auto-spectral densities on diagonal
         for freq_idx in range(num_freqs):
             S_matrices[freq_idx].diagonal().copy_(S_values_all[freq_idx])
 
-        # 创建网格以计算所有点对
+        # Create grid to compute all point pairs
         x_i = positions[:, 0].unsqueeze(1).expand(n, n)  # [n, n]
         x_j = positions[:, 0].unsqueeze(0).expand(n, n)  # [n, n]
         y_i = positions[:, 1].unsqueeze(1).expand(n, n)  # [n, n]
@@ -202,7 +202,7 @@ class TorchWindSimulator:
         U_i = wind_speeds.unsqueeze(1).expand(n, n)  # [n, n]
         U_j = wind_speeds.unsqueeze(0).expand(n, n)  # [n, n]
 
-        # 为每个频率点批量计算互谱
+        # Batch compute cross-spectra for each frequency point
         for freq_idx in range(num_freqs):
             freq = frequencies[freq_idx]
 
@@ -221,23 +221,23 @@ class TorchWindSimulator:
 
     def simulate_wind(self, positions, wind_speeds, direction="u"):
         """
-        模拟脉动风场
+        Simulate fluctuating wind field.
 
-        参数:
-        positions - 形状为(n, 3)的数组，每行为(x, y, z)坐标
-        wind_speeds - 形状为(n,)的数组，表示各点的平均风速
-        direction - 风向，'u'表示顺风向，'w'表示竖向
+        Args:
+            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
+            wind_speeds: Array of shape (n,), represents mean wind speed at each point
+            direction: Wind direction, 'u' for along-wind, 'w' for vertical
 
-        返回:
-        wind_samples - 形状为(n, M)的数组，表示各点的脉动风时程
-        frequencies - 频率数组
+        Returns:
+            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
+            frequencies: Frequency array
         """
         if not isinstance(positions, Tensor):
             positions = torch.from_numpy(positions)
         return self._simulate_fluctuating_wind(positions, wind_speeds, direction)
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
-        """风场模拟的内部实现"""
+        """Internal implementation of wind field simulation."""
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
 
@@ -253,12 +253,12 @@ class TorchWindSimulator:
             else self.calculate_power_spectrum_w
         )
 
-        # 构建互谱密度矩阵
+        # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
             positions, wind_speeds, frequencies, spectrum_func
         )
 
-        # 对每个频率点进行Cholesky分解 - 使用 vmap 代替循环
+        # Perform Cholesky decomposition for each frequency point - use vmap instead of loop
         def cholesky_with_reg(S):
             return torch.linalg.cholesky(
                 S + torch.eye(n, device=self.device) * 1e-12
@@ -267,15 +267,15 @@ class TorchWindSimulator:
 
         H_matrices = func.vmap(cholesky_with_reg)(S_matrices)
 
-        # 修改 _simulate_fluctuating_wind 方法中的 B 矩阵计算部分
+        # Modify B matrix computation in _simulate_fluctuating_wind method
         N_int = int(N.item()) if isinstance(N, torch.Tensor) else int(N)
         M_int = int(M.item()) if isinstance(M, torch.Tensor) else int(M)
 
-        # 生成随机相位
-        torch.manual_seed(self.seed)  # 确保可重复性
+        # Generate random phases
+        torch.manual_seed(self.seed)  # Ensure reproducibility
         phi = torch.rand((n, n, N_int), device=self.device) * 2 * torch.pi
 
-        # 初始化 B 矩阵
+        # Initialize B matrix
         B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
         for j in range(n):
@@ -289,13 +289,13 @@ class TorchWindSimulator:
 
             B[j, :N_int] = torch.einsum("li,li->l", H_masked, exp_masked)
 
-        # 计算 FFT
+        # Compute FFT
         G = torch.fft.ifft(B, dim=1) * M_int
 
-        # 计算风场样本 - 可以保留向量化
+        # Compute wind field samples - can keep vectorized
         p_indices = torch.arange(M, device=self.device)
         exponent = torch.exp(1j * (p_indices * torch.pi / M))
         wind_samples = torch.sqrt(2 * dw) * (G * exponent.unsqueeze(0)).real
 
-        # 转换为NumPy数组以确保与JAX版本一致的输出
+        # Convert to NumPy array to ensure consistent output with JAX version
         return wind_samples.cpu().numpy(), frequencies.cpu().numpy()

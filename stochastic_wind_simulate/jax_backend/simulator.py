@@ -7,46 +7,46 @@ from jax.scipy.linalg import cholesky
 
 
 class JaxWindSimulator:
-    """随机风场模拟器类"""
+    """Stochastic wind field simulator class."""
 
     def __init__(self, key=0):
         """
-        初始化风场模拟器
+        Initialize the wind field simulator.
 
-        参数:
-        key - JAX随机数种子
+        Args:
+            key: JAX random number seed
         """
         self.key = random.PRNGKey(key)
         self.params = self._set_default_parameters()
 
     def _set_default_parameters(self) -> Dict:
-        """设置默认风场模拟参数"""
+        """Set default wind field simulation parameters."""
         params = {
-            "K": 0.4,  # 无量纲常数
-            "H_bar": 10.0,  # 周围建筑物平均高度(m)
-            "z_0": 0.05,  # 地表粗糙高度
-            "C_x": 16.0,  # x方向衰减系数
-            "C_y": 6.0,  # y方向衰减系数
-            "C_z": 10.0,  # z方向衰减系数
-            "w_up": 5.0,  # 截止频率(Hz)
-            "N": 3000,  # 频率分段数
-            "M": 6000,  # 时间点数(M=2N)
-            "T": 600,  # 模拟时长(s)
-            "dt": 0.1,  # 时间步长(s)
-            "U_d": 25.0,  # 设计基本风速(m/s)
+            "K": 0.4,  # Dimensionless constant
+            "H_bar": 10.0,  # Average height of surrounding buildings (m)
+            "z_0": 0.05,  # Surface roughness height
+            "C_x": 16.0,  # Decay coefficient in x direction
+            "C_y": 6.0,  # Decay coefficient in y direction
+            "C_z": 10.0,  # Decay coefficient in z direction
+            "w_up": 5.0,  # Cutoff frequency (Hz)
+            "N": 3000,  # Number of frequency segments
+            "M": 6000,  # Number of time points (M=2N)
+            "T": 600,  # Simulation duration (s)
+            "dt": 0.1,  # Time step (s)
+            "U_d": 25.0,  # Design basic wind speed (m/s)
         }
-        params["dw"] = params["w_up"] / params["N"]  # 频率增量
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # 计算零平面位移
+        params["dw"] = params["w_up"] / params["N"]  # Frequency increment
+        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
 
         return params
 
     def update_parameters(self, **kwargs):
-        """更新模拟参数"""
+        """Update simulation parameters."""
         for key, value in kwargs.items():
             if key in self.params:
                 self.params[key] = value
 
-        # 更新依赖参数
+        # Update dependent parameters
         self.params["dw"] = self.params["w_up"] / self.params["N"]
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
@@ -55,51 +55,51 @@ class JaxWindSimulator:
     @staticmethod
     @jit
     def calculate_friction_velocity(Z, U_d, z_0, z_d, K):
-        """计算风的摩阻速度 u_*"""
+        """Calculate wind friction velocity u_*."""
         return K * U_d / jnp.log((Z - z_d) / z_0)
 
     @staticmethod
     @jit
     def calculate_f(n, Z, U_d):
-        """计算无量纲频率 f"""
+        """Calculate dimensionless frequency f."""
         return n * Z / U_d
 
     @staticmethod
     @jit
     def calculate_power_spectrum_u(n, u_star, f):
-        """计算顺风向脉动风功率谱密度 S_u(n)"""
+        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
         return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
 
     @staticmethod
     @jit
     def calculate_power_spectrum_w(n, u_star, f):
-        """计算竖向脉动风功率谱密度 S_w(n)"""
+        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
 
     @staticmethod
     @jit
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
-        """计算空间相关函数 Coh"""
+        """Calculate spatial correlation function Coh."""
         distance_term = jnp.sqrt(
             C_x**2 * (x_i - x_j) ** 2
             + C_y**2 * (y_i - y_j) ** 2
             + C_z**2 * (z_i - z_j) ** 2
         )
-        # 增加数值稳定性保护，避免除以接近零的值
+        # Add numerical stability protection to avoid division by near-zero values
         denominator = 2 * jnp.pi * (U_zi + U_zj)
-        safe_denominator = jnp.maximum(denominator, 1e-8)  # 设置安全最小值
+        safe_denominator = jnp.maximum(denominator, 1e-8)  # Set safe minimum value
 
         return jnp.exp(-2 * w * distance_term / safe_denominator)
 
     @staticmethod
     @jit
     def calculate_cross_spectrum(S_ii, S_jj, coherence):
-        """计算互谱密度函数 S_ij"""
+        """Calculate cross-spectral density function S_ij."""
         return jnp.sqrt(S_ii * S_jj) * coherence
 
     @staticmethod
     def calculate_simulation_frequency(N, dw):
-        """计算模拟频率数组"""
+        """Calculate simulation frequency array."""
         # return jnp.array([(l - 0.5) * dw for l in range(1, N + 1)])
         return jnp.arange(1, N + 1) * dw - dw / 2
     
@@ -118,7 +118,7 @@ class JaxWindSimulator:
 
 
     def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
-        """构建互谱密度矩阵 S(w)"""
+        """Build cross-spectral density matrix S(w)."""
         n = positions.shape[0]
 
         x_i = jnp.expand_dims(positions[:, 0], 1).repeat(n, axis=1)  # [n, n]
@@ -145,7 +145,7 @@ class JaxWindSimulator:
             cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
             return cross_spectrum
         
-        # 对每个频率点并行计算互谱密度矩阵
+        # Parallel computation of cross-spectral density matrix for each frequency point
         S_matrices = vmap(
             _build_spectrum_for_position,
             in_axes=(0, None, None),
@@ -155,16 +155,16 @@ class JaxWindSimulator:
 
     def simulate_wind(self, positions, wind_speeds, direction="u"):
         """
-        模拟脉动风场
+        Simulate fluctuating wind field.
 
-        参数:
-        positions - 形状为(n, 3)的数组，每行为(x, y, z)坐标
-        wind_speeds - 形状为(n,)的数组，表示各点的平均风速
-        direction - 风向，'u'表示顺风向，'w'表示竖向
+        Args:
+            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
+            wind_speeds: Array of shape (n,), represents mean wind speed at each point
+            direction: Wind direction, 'u' for along-wind, 'w' for vertical
 
-        返回:
-        wind_samples - 形状为(n, M)的数组，表示各点的脉动风时程
-        frequencies - 频率数组
+        Returns:
+            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
+            frequencies: Frequency array
         """
         self.key, subkey = random.split(self.key)
         if not isinstance(positions, jnp.ndarray):
@@ -175,7 +175,7 @@ class JaxWindSimulator:
         )
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, key, direction):
-        """风场模拟的内部实现"""
+        """Internal implementation of wind field simulation."""
         n = positions.shape[0]
         N = self.params["N"]
         M = self.params["M"]
@@ -188,31 +188,31 @@ class JaxWindSimulator:
             else self.calculate_power_spectrum_w
         )
 
-        # 构建互谱密度矩阵
+        # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
             positions, wind_speeds, frequencies, spectrum_func
         )
 
-        # 对每个频率点进行Cholesky分解
+        # Perform Cholesky decomposition for each frequency point
         @jit
         def cholesky_with_reg(S):
             return cholesky(S + jnp.eye(n) * 1e-12, lower=True)
 
         H_matrices = vmap(cholesky_with_reg)(S_matrices)
 
-        # 生成随机相位
+        # Generate random phases
         key, subkey = random.split(key)
         phi = random.uniform(subkey, (n, n, N), minval=0, maxval=2 * jnp.pi)
 
         @partial(jit, static_argnums=(1, 2, 3))
         def compute_B_for_point(j, N, M, n, H_matrices, phi):
-            # 创建掩码
+            # Create mask
             row_indices = jnp.arange(n)
             mask = row_indices <= j
             H_terms = H_matrices[:, j, :]
             H_masked = H_terms * mask
 
-            # 转换相位到正确形状
+            # Convert phase to correct shape
             phi_masked = phi[j, :, :] * mask.reshape(n, 1)
             exp_terms = jnp.exp(1j * phi_masked.transpose(1, 0))
 
@@ -220,13 +220,13 @@ class JaxWindSimulator:
 
             return jnp.pad(B_values, (0, M - N), mode="constant")
 
-        # 对每个点并行计算B
+        # Parallel computation of B for each point
         B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None))(
             jnp.arange(n), N, M, n, H_matrices, phi
         )
         G = vmap(jit(jnp.fft.ifft))(B)*M
 
-        # 计算风场样本
+        # Calculate wind field samples
         @jit
         def compute_samples_for_point(j):
             p_indices = jnp.arange(M)

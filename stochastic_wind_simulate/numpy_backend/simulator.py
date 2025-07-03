@@ -4,42 +4,42 @@ from scipy.linalg import cholesky
 
 
 class NumpyWindSimulator:
-    """使用 NumPy 实现的随机风场模拟器类 - 与JAX版本逻辑一致"""
+    """Stochastic wind field simulator class implemented using NumPy - consistent logic with JAX version."""
 
     def __init__(self, key=0):
-        """初始化风场模拟器"""
+        """Initialize the wind field simulator."""
         self.seed = key
         np.random.seed(key)
         self.params = self._set_default_parameters()
 
     def _set_default_parameters(self) -> Dict:
-        """设置默认风场模拟参数"""
+        """Set default wind field simulation parameters."""
         params = {
-            "K": 0.4,  # 无量纲常数
-            "H_bar": 10.0,  # 周围建筑物平均高度(m)
-            "z_0": 0.05,  # 地表粗糙高度
-            "C_x": 16.0,  # x方向衰减系数
-            "C_y": 6.0,  # y方向衰减系数
-            "C_z": 10.0,  # z方向衰减系数
-            "w_up": 5.0,  # 截止频率(Hz)
-            "N": 3000,  # 频率分段数
-            "M": 6000,  # 时间点数(M=2N)
-            "T": 600,  # 模拟时长(s)
-            "dt": 0.1,  # 时间步长(s)
-            "U_d": 25.0,  # 设计基本风速(m/s)
+            "K": 0.4,  # Dimensionless constant
+            "H_bar": 10.0,  # Average height of surrounding buildings (m)
+            "z_0": 0.05,  # Surface roughness height
+            "C_x": 16.0,  # Decay coefficient in x direction
+            "C_y": 6.0,  # Decay coefficient in y direction
+            "C_z": 10.0,  # Decay coefficient in z direction
+            "w_up": 5.0,  # Cutoff frequency (Hz)
+            "N": 3000,  # Number of frequency segments
+            "M": 6000,  # Number of time points (M=2N)
+            "T": 600,  # Simulation duration (s)
+            "dt": 0.1,  # Time step (s)
+            "U_d": 25.0,  # Design basic wind speed (m/s)
         }
-        params["dw"] = params["w_up"] / params["N"]  # 频率增量
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # 计算零平面位移
+        params["dw"] = params["w_up"] / params["N"]  # Frequency increment
+        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
 
         return params
 
     def update_parameters(self, **kwargs):
-        """更新模拟参数"""
+        """Update simulation parameters."""
         for key, value in kwargs.items():
             if key in self.params:
                 self.params[key] = value
 
-        # 更新依赖参数
+        # Update dependent parameters
         self.params["dw"] = self.params["w_up"] / self.params["N"]
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
@@ -47,54 +47,54 @@ class NumpyWindSimulator:
 
     @staticmethod
     def calculate_friction_velocity(Z, U_d, z_0, z_d, K):
-        """计算风的摩阻速度 u_*"""
+        """Calculate wind friction velocity u_*."""
         return K * U_d / np.log((Z - z_d) / z_0)
 
     @staticmethod
     def calculate_f(n, Z, U_d):
-        """计算无量纲频率 f"""
+        """Calculate dimensionless frequency f."""
         return n * Z / U_d
 
     @staticmethod
     def calculate_power_spectrum_u(n, u_star, f):
-        """计算顺风向脉动风功率谱密度 S_u(n)"""
+        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
         return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
 
     @staticmethod
     def calculate_power_spectrum_w(n, u_star, f):
-        """计算竖向脉动风功率谱密度 S_w(n)"""
+        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
 
     @staticmethod
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
-        """计算空间相关函数 Coh"""
+        """Calculate spatial correlation function Coh."""
         distance_term = np.sqrt(
             C_x**2 * (x_i - x_j) ** 2
             + C_y**2 * (y_i - y_j) ** 2
             + C_z**2 * (z_i - z_j) ** 2
         )
-        # 增加数值稳定性保护，避免除以接近零的值
+        # Add numerical stability protection to avoid division by near-zero values
         denominator = 2 * np.pi * (U_zi + U_zj)
-        safe_denominator = np.maximum(denominator, 1e-8)  # 设置安全最小值
+        safe_denominator = np.maximum(denominator, 1e-8)  # Set safe minimum value
 
         return np.exp(-2 * w * distance_term / safe_denominator)
 
     @staticmethod
     def calculate_cross_spectrum(S_ii, S_jj, coherence):
-        """计算互谱密度函数 S_ij"""
+        """Calculate cross-spectral density function S_ij."""
         return np.sqrt(S_ii * S_jj) * coherence
 
     @staticmethod
     def calculate_simulation_frequency(N, dw):
-        """计算模拟频率数组"""
+        """Calculate simulation frequency array."""
         return np.arange(1, N + 1) * dw - dw / 2
 
     def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
-        """构建互谱密度矩阵 S(w) - 与JAX版本完全对应"""
+        """Build cross-spectral density matrix S(w) - fully corresponding to JAX version."""
         n = positions.shape[0]
         num_freqs = len(frequencies)
 
-        # 计算各点的摩阻速度
+        # Calculate friction velocity at each point
         u_stars = self.calculate_friction_velocity(
             positions[:, 2],
             self.params["U_d"], 
@@ -103,19 +103,19 @@ class NumpyWindSimulator:
             self.params["K"]
         )
 
-        # 计算f值
+        # Calculate f values
         f_values_all = np.zeros((num_freqs, n))
         for freq_idx, freq in enumerate(frequencies):
             f_values_all[freq_idx] = self.calculate_f(freq, positions[:, 2], self.params["U_d"])
 
-        # 计算功率谱密度
+        # Calculate power spectral density
         S_values_all = np.zeros((num_freqs, n))
         for freq_idx in range(num_freqs):
             S_values_all[freq_idx] = spectrum_func(
                 frequencies[freq_idx], u_stars, f_values_all[freq_idx]
             )
 
-        # 创建网格坐标 - 直接对应JAX的实现
+        # Create grid coordinates - directly corresponding to JAX implementation
         x_i = positions[:, 0][:, np.newaxis].repeat(n, axis=1)  # [n, n]
         x_j = positions[:, 0][np.newaxis, :].repeat(n, axis=0)  # [n, n]
         y_i = positions[:, 1][:, np.newaxis].repeat(n, axis=1)  # [n, n]
@@ -126,19 +126,19 @@ class NumpyWindSimulator:
         U_i = wind_speeds[:, np.newaxis].repeat(n, axis=1)  # [n, n]
         U_j = wind_speeds[np.newaxis, :].repeat(n, axis=0)  # [n, n]
         
-        # 初始化结果矩阵
+        # Initialize result matrix
         S_matrices = np.zeros((num_freqs, n, n))
         
-        # 对每个频率计算互谱矩阵
+        # Calculate cross-spectral matrix for each frequency
         for freq_idx, freq in enumerate(frequencies):
-            # 计算相干函数
+            # Calculate coherence function
             coherence = self.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j, 
                 freq, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]
             )
             
-            # 计算互谱密度
+            # Calculate cross-spectral density
             S_i = S_values_all[freq_idx].reshape(n, 1)  # [n, 1]
             S_j = S_values_all[freq_idx].reshape(1, n)  # [1, n]
             cross_spectrum = np.sqrt(S_i * S_j) * coherence
@@ -148,11 +148,11 @@ class NumpyWindSimulator:
         return S_matrices
 
     def simulate_wind(self, positions, wind_speeds, direction="u"):
-        """模拟脉动风场"""
+        """Simulate fluctuating wind field."""
         np.random.seed(self.seed)
         self.seed += 1
         
-        # 转换输入为NumPy数组
+        # Convert inputs to NumPy arrays
         positions = np.asarray(positions, dtype=np.float64)
         wind_speeds = np.asarray(wind_speeds, dtype=np.float64)
         
@@ -161,13 +161,13 @@ class NumpyWindSimulator:
         )
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
-        """风场模拟的内部实现 - 与JAX版本对应"""
+        """Internal implementation of wind field simulation - corresponding to JAX version."""
         n = positions.shape[0]
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
 
-        # 计算频率和选择谱函数
+        # Calculate frequency and select spectral function
         frequencies = self.calculate_simulation_frequency(N, dw)
         spectrum_func = (
             self.calculate_power_spectrum_u
@@ -175,50 +175,50 @@ class NumpyWindSimulator:
             else self.calculate_power_spectrum_w
         )
 
-        # 构建互谱密度矩阵
+        # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
             positions, wind_speeds, frequencies, spectrum_func
         )
 
-        # 对每个频率点进行Cholesky分解
+        # Perform Cholesky decomposition for each frequency point
         H_matrices = np.zeros((N, n, n), dtype=np.complex128)
         for i in range(N):
-            # 添加小量对角项提高数值稳定性
+            # Add small diagonal terms to improve numerical stability
             S_reg = S_matrices[i] + np.eye(n) * 1e-12
             H_matrices[i] = cholesky(S_reg, lower=True)
 
-        # 生成随机相位 - 与JAX版本相同
+        # Generate random phases - same as JAX version
         phi = np.random.uniform(0, 2*np.pi, (n, n, N))
         
-        # 计算B矩阵
+        # Calculate B matrix
         B = np.zeros((n, M), dtype=np.complex128)
         
         for j in range(n):
-            # 创建掩码 - 只使用下三角部分
+            # Create mask - only use lower triangular part
             mask = np.arange(n) <= j
             
-            # 提取当前点的矩阵行
+            # Extract matrix rows for current point
             H_terms = H_matrices[:, j, :]
             H_masked = H_terms * mask
             
-            # 计算相位项
+            # Calculate phase terms
             phi_masked = phi[j, :, :] * mask.reshape(n, 1)
             exp_terms = np.exp(1j * phi_masked.T)
             
-            # 计算B值
+            # Calculate B values
             B_values = np.zeros(N, dtype=np.complex128)
             for freq_idx in range(N):
                 B_values[freq_idx] = np.sum(
                     H_masked[freq_idx] * exp_terms[freq_idx] * mask
                 )
                 
-            # 填充B矩阵
+            # Fill B matrix
             B[j, :N] = B_values
         
-        # FFT变换
+        # FFT transform
         G = np.fft.ifft(B) * M
         
-        # 计算风场样本
+        # Calculate wind field samples
         wind_samples = np.zeros((n, M))
         p_indices = np.arange(M)
         exp_factor = np.exp(1j * (p_indices * np.pi / M))

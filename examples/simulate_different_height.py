@@ -14,34 +14,34 @@ logging.basicConfig(
 
 
 def main():
-    """主程序入口"""
-    # 创建风场模拟器
+    """Main program entry point."""
+    # Create wind field simulator
     # simulator = WindSimulator(key=42)
-    arg_parser = argparse.ArgumentParser(description="风场模拟器示例")
+    arg_parser = argparse.ArgumentParser(description="Wind field simulator example")
     arg_parser.add_argument(
         "--backend",
         type=str,
         choices=["jax", "torch", "numpy"],
         default="jax",
-        help="选择后端库: jax 或 torch 或 numpy (默认: jax)",
+        help="Choose backend library: jax or torch or numpy (default: jax)",
     )
     args = arg_parser.parse_args()
     backend = args.backend
-    logging.info(f"使用后端: {backend}")
+    logging.info(f"Using backend: {backend}")
     simulator = get_simulator(backend=backend, key=42)
 
-    # 更新模拟器参数
+    # Update simulator parameters
     simulator.update_parameters(
         U_d=20.0,
         H_bar=15.0,
     )
 
-    # 定义模拟点的位置和平均风速
-    n = 100  # 模拟点数量
-    Z = 200.0  # 最高高度(m)
-    positions = np.zeros((n, 3))  # 初始化位置数组，(x, y, z)
-    positions[:, 0] = 50  # x坐标固定为50
-    positions[:, -1] = np.linspace(20, Z, n)  # z坐标从20到Z均匀分布
+    # Define simulation point positions and mean wind speeds
+    n = 100  # Number of simulation points
+    Z = 200.0  # Maximum height (m)
+    positions = np.zeros((n, 3))  # Initialize position array, (x, y, z)
+    positions[:, 0] = 50  # x coordinate fixed at 50
+    positions[:, -1] = np.linspace(20, Z, n)  # z coordinate uniformly distributed from 20 to Z
 
     if backend == "jax":
         import jax.numpy as jnp
@@ -53,32 +53,32 @@ def main():
         positions = torch.from_numpy(positions)
 
     elif backend == "numpy":
-        # positions 已经是 numpy 数组，无需转换
+        # positions is already a numpy array, no conversion needed
         pass
     else:
         raise ValueError(f"Unsupported backend: {backend}")
 
-    # 各点平均风速
-    wind_speeds = positions[:, 2] * 0.05 + 25.0  # 模拟线性变化的平均风速
+    # Mean wind speed at each point
+    wind_speeds = positions[:, 2] * 0.05 + 25.0  # Simulate linearly varying mean wind speed
 
-    # 记录开始时间
+    # Record start time
     start_time = time.time()
 
-    # 模拟顺风向脉动风
-    logging.info("模拟顺风向脉动风...")
+    # Simulate along-wind fluctuating wind
+    logging.info("Simulating along-wind fluctuating wind...")
     u_samples, frequencies = simulator.simulate_wind(
         positions, wind_speeds, direction="u"
     )
 
-    # 模拟竖向脉动风
-    logging.info("模拟竖向脉动风...")
+    # Simulate vertical fluctuating wind
+    logging.info("Simulating vertical fluctuating wind...")
     w_samples, frequencies = simulator.simulate_wind(
         positions, wind_speeds, direction="w"
     )
 
-    # 打印计算时间
+    # Print computation time
     elapsed_time = time.time() - start_time
-    logging.info(f"模拟完成，耗时: {elapsed_time:.2f}秒")
+    logging.info(f"Simulation completed, elapsed time: {elapsed_time:.2f} seconds")
 
     # visualizer = WindVisualizer(key=42, **simulator.params)
     visualizer = get_visualizer(backend=backend, key=42, **simulator.params)
