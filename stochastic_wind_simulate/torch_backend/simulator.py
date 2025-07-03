@@ -279,13 +279,15 @@ class TorchWindSimulator:
         B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
         for j in range(n):
-            # 使用 einsum 一次计算所有频率点的贡献
-            # 注意维度顺序: H_matrices 是 [N, n, n]，我们需要 [:, j, :j+1]
-            H_slice = H_matrices[:, j, : j + 1].to(torch.complex64)  # [N, j+1]
-            exp_slice = torch.exp(1j * phi[j, : j + 1, :].permute(1, 0))  # [N, j+1]
+            mask = torch.arange(n, device=self.device) <= j
+            H_terms = H_matrices[:, j, :]
+            H_masked = H_terms * mask
+            H_masked = H_masked.to(torch.complex64) 
+            phi_masked = phi[j, :, :] * mask.reshape(n, 1)
+            exp_terms = torch.exp(1j * phi_masked.transpose(1, 0))
+            exp_masked = exp_terms * mask
 
-            # 在维度1上求和 (对应于 i)
-            B[j, :N_int] = torch.einsum("li,li->l", H_slice, exp_slice)
+            B[j, :N_int] = torch.einsum("li,li->l", H_masked, exp_masked)
 
         # 计算 FFT
         G = torch.fft.ifft(B, dim=1) * M_int
