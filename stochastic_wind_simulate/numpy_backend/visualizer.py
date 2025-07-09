@@ -99,10 +99,8 @@ class NumpyWindVisualizer:
         correlation = signal.correlate(
             data_i_centered, data_j_centered, mode="full"
         )
-        std_i = np.std(data_i)
-        std_j = np.std(data_j)
-        n = len(data_i)
-        return correlation / (n * std_i * std_j)
+        corr_max = np.max(np.abs(correlation))
+        return correlation / (corr_max if corr_max > 0 else 1.0) 
 
     def _calculate_theoretical_correlation(self, S_ii, S_jj, coherence, M):
         """计算理论互相关函数（傅里叶逆变换）"""

@@ -273,21 +273,34 @@ class TorchWindSimulator:
 
         # Generate random phases
         torch.manual_seed(self.seed)  # Ensure reproducibility
-        phi = torch.rand((n, n, N_int), device=self.device) * 2 * torch.pi
+        phi = torch.rand((n, N_int), device=self.device) * 2 * torch.pi
 
         # Initialize B matrix
         B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
+        # 计算B矩阵 - 修正版本，与JAX版本保持一致
         for j in range(n):
-            mask = torch.arange(n, device=self.device) <= j
-            H_terms = H_matrices[:, j, :]
-            H_masked = H_terms * mask
-            H_masked = H_masked.to(torch.complex64) 
-            phi_masked = phi[j, :, :] * mask.reshape(n, 1)
-            exp_terms = torch.exp(1j * phi_masked.transpose(1, 0))
-            exp_masked = exp_terms * mask
-
-            B[j, :N_int] = torch.einsum("li,li->l", H_masked, exp_masked)
+            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            m_indices = torch.arange(n, device=self.device)  # [n,]
+            mask = m_indices <= j  # [n,] 布尔掩码
+            
+            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            H_jm_all = H_matrices[:, j, :]  # [N, n]
+            
+            # phi[m, l] -> phi.T 得到 [N, n]
+            phi_transposed = phi.t()  # [N, n]
+            
+            # 计算 exp(i * phi_{ml})
+            exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
+            
+            # 应用掩码并求和
+            # 将mask广播到[N, n]的形状
+            mask_expanded = mask.unsqueeze(0).expand(N_int, -1)  # [N, n]
+            masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
+            B_values = torch.sum(masked_terms, dim=1)  # [N,]
+            
+            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            B[j, :N_int] = B_values
 
         # Compute FFT
         G = torch.fft.ifft(B, dim=1) * M_int

@@ -34,15 +34,19 @@ def main():
     simulator.update_parameters(
         U_d=20.0,
         H_bar=15.0,
+        # T=1200,
+        # M=12000,
+        # N=6000
     )
 
     # Define simulation point positions and mean wind speeds
-    n = 200  # Number of simulation points
+    n = 100  # Number of simulation points
     Z = 30.0  # Height (m)
 
     positions = np.zeros((n, 3))
-    positions[:, 0] = np.linspace(0, 100, n)
-    positions[:, -1] = Z
+    positions[:, 0] = np.linspace(0, 1000, n)
+    positions[:, 1] = 5
+    positions[:, -1] = Z + 5
 
     if backend == "jax":
         import jax.numpy as jnp
@@ -91,15 +95,30 @@ def main():
     )
 
     visualizer.plot_cross_correlation(
-        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 2)
+        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1, 10)
     )
     visualizer.plot_cross_correlation(
-        w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 2)
+        w_samples, positions, wind_speeds, show=True, direction="w", indices=(1, 10)
     )
 
-    visualizer.plot_cross_coherence(
-        u_samples, positions, wind_speeds, show=True, direction="u", indices=(1,2)
-    )
+    # visualizer.plot_cross_coherence(
+    #     u_samples, positions, wind_speeds, show=True, direction="u", indices=(1,2)
+    # )
+
+    if backend == "jax":
+        import jax.numpy as jnp
+        jnp.save("u_samples_jax.npy", u_samples)
+        jnp.save("w_samples_jax.npy", w_samples)
+    elif backend == "torch":
+        import torch
+        torch.save(u_samples, "u_samples_torch.pt")
+        torch.save(w_samples, "w_samples_torch.pt")
+    elif backend == "numpy":
+        np.save("u_samples_numpy.npy", u_samples)
+        np.save("w_samples_numpy.npy", w_samples)
+    else:
+        raise ValueError(f"Unsupported backend: {backend}")
+
 
 
 if __name__ == "__main__":

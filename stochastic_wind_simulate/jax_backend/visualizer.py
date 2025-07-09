@@ -89,23 +89,23 @@ class JaxWindVisualizer:
             plt.close()
 
     def _compute_correlation(self, data_i, data_j):
-        """使用JIT加速的互相关函数计算"""
+        """计算样本互相关函数 - 使用最大值归一化"""
         data_i_centered = data_i - jnp.mean(data_i)
         data_j_centered = data_j - jnp.mean(data_j)
+        
         correlation = jax.scipy.signal.correlate(
             data_i_centered, data_j_centered, mode="full"
         )
-        std_i = jnp.std(data_i)
-        std_j = jnp.std(data_j)
-        n = len(data_i)
-        return correlation / (n * std_i * std_j)
+        
+        # 使用最大值归一化（与理论值保持一致）
+        corr_max = jnp.max(jnp.abs(correlation))
+        return correlation / (corr_max if corr_max > 0 else 1.0)
 
     def _calculate_theoretical_correlation(self, S_ii, S_jj, coherence, M):
-        """计算理论互相关函数（傅里叶逆变换）"""
-        # 计算互谱密度
+        """计算理论互相关函数 - 保持最大值归一化"""
+        # 原有计算逻辑保持不变
         cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
 
-        # 准备完整的频谱
         full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
         N = len(coherence)
         full_spectrum = full_spectrum.at[1 : N + 1].set(cross_spectrum)
@@ -113,7 +113,6 @@ class JaxWindVisualizer:
             jnp.flip(jnp.conj(cross_spectrum))
         )
 
-        # 执行IFFT获得理论互相关函数
         theo_correlation = jnp.real(jnp.fft.ifft(full_spectrum))
         theo_correlation = jnp.fft.fftshift(theo_correlation)
 

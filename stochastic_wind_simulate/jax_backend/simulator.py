@@ -202,29 +202,41 @@ class JaxWindSimulator:
 
         # Generate random phases
         key, subkey = random.split(key)
-        phi = random.uniform(subkey, (n, n, N), minval=0, maxval=2 * jnp.pi)
+        phi = random.uniform(subkey, (n, N), minval=0, maxval=2 * jnp.pi)
 
         @partial(jit, static_argnums=(1, 2, 3))
         def compute_B_for_point(j, N, M, n, H_matrices, phi):
-            # Create mask
-            row_indices = jnp.arange(n)
-            mask = row_indices <= j
-            H_terms = H_matrices[:, j, :]
-            H_masked = H_terms * mask
-
-            # Convert phase to correct shape
-            phi_masked = phi[j, :, :] * mask.reshape(n, 1)
-            exp_terms = jnp.exp(1j * phi_masked.transpose(1, 0))
-
-            B_values = jnp.einsum("nl,nl->n", H_masked.reshape(N, n), exp_terms * mask)
-
+            """
+            计算第j个点的B值，完全向量化的实现
+            B_j(w_l) = sum_{m=1}^{j} H_{jm}(w_l) * exp(i * phi_{ml})
+            """
+            # 创建掩码矩阵 [N, n]，其中 mask[l, m] = True if m <= j
+            m_indices = jnp.arange(n)  # [n,]
+            mask = m_indices <= j  # [n,] 布尔掩码
+            
+            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            H_jm_all = H_matrices[:, j, :]  # [N, n]
+            
+            # phi[m, l] -> phi[:, :] -> phi.T 得到 [N, n]
+            phi_transposed = phi.T  # [N, n]
+            
+            # 计算 exp(i * phi_{ml})
+            exp_terms = jnp.exp(1j * phi_transposed)  # [N, n]
+            
+            # 应用掩码并求和
+            masked_terms = jnp.where(mask, H_jm_all * exp_terms, 0.0)  # [N, n]
+            B_values = jnp.sum(masked_terms, axis=1)  # [N,]
+            
+            # 零填充到M长度
             return jnp.pad(B_values, (0, M - N), mode="constant")
 
         # Parallel computation of B for each point
         B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None))(
             jnp.arange(n), N, M, n, H_matrices, phi
         )
-        G = vmap(jit(jnp.fft.ifft))(B)*M
+        
+        # FFT计算G
+        G = vmap(jit(jnp.fft.ifft))(B) * M
 
         # Calculate wind field samples
         @jit
@@ -232,10 +244,7 @@ class JaxWindSimulator:
             p_indices = jnp.arange(M)
             exponent = jnp.exp(1j * (p_indices * jnp.pi / M))
             terms = G[j] * exponent
-            # return 2 * jnp.sqrt(dw / (2 * jnp.pi)) * jnp.real(terms)
-            # return 2 * jnp.sqrt(2) * jnp.sqrt(dw / (2 * jnp.pi)) * jnp.real(terms)
             return jnp.sqrt(2 * dw) * jnp.real(terms)
-
 
         wind_samples = vmap(compute_samples_for_point)(jnp.arange(n))
 

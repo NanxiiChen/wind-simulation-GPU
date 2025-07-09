@@ -188,31 +188,32 @@ class NumpyWindSimulator:
             H_matrices[i] = cholesky(S_reg, lower=True)
 
         # Generate random phases - same as JAX version
-        phi = np.random.uniform(0, 2*np.pi, (n, n, N))
-        
-        # Calculate B matrix
+        phi = np.random.uniform(0, 2*np.pi, (n, N))
+
+        # Calculate B matrix - 修正版本，与JAX版本保持一致
         B = np.zeros((n, M), dtype=np.complex128)
-        
+
         for j in range(n):
-            # Create mask - only use lower triangular part
-            mask = np.arange(n) <= j
+            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            m_indices = np.arange(n)  # [n,]
+            mask = m_indices <= j  # [n,] 布尔掩码
             
-            # Extract matrix rows for current point
-            H_terms = H_matrices[:, j, :]
-            H_masked = H_terms * mask
+            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            H_jm_all = H_matrices[:, j, :]  # [N, n]
             
-            # Calculate phase terms
-            phi_masked = phi[j, :, :] * mask.reshape(n, 1)
-            exp_terms = np.exp(1j * phi_masked.T)
+            # phi[m, l] -> phi.T 得到 [N, n]
+            phi_transposed = phi.T  # [N, n]
             
-            # Calculate B values
-            B_values = np.zeros(N, dtype=np.complex128)
-            for freq_idx in range(N):
-                B_values[freq_idx] = np.sum(
-                    H_masked[freq_idx] * exp_terms[freq_idx] * mask
-                )
-                
-            # Fill B matrix
+            # 计算 exp(i * phi_{ml})
+            exp_terms = np.exp(1j * phi_transposed)  # [N, n]
+            
+            # 应用掩码并求和
+            # 将mask广播到[N, n]的形状
+            mask_expanded = np.broadcast_to(mask, (N, n))  # [N, n]
+            masked_terms = np.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
+            B_values = np.sum(masked_terms, axis=1)  # [N,]
+            
+            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
             B[j, :N] = B_values
         
         # FFT transform
