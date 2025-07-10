@@ -50,7 +50,7 @@ python examples/basic_usage.py  --backend "jax"
 from stochastic_wind_simulate import get_simulator, get_visualizer
 
 # Initialize simulator with default parameters
-simulator = get_simulator(backend="torch", key=42)
+simulator = get_simulator(backend="jax", key=42, spectrum_type="kaimal-nd")
 
 # Create sample points
 import torch
@@ -62,11 +62,11 @@ positions[:, 2] = Z  # height
 
 # Run simulation
 wind_speeds = positions[:, 0] * 0.2 + 25.0  # Example wind speeds based on x-coordinates
-u_samples, frequencies = simulator.simulate_wind(positions, wind_speeds, direction="u")
+u_samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u")
 
 # Visualize results
-visualizer = get_visualizer(backend="torch", **simulator.params)
-visualizer.plot_psd(u_samples, positions[:, -1], show_num=5, show=True, direction="u")
+visualizer = get_visualizer(backend="jax", **simulator.params)
+visualizer.plot_psd(u_samples, positions[:, -1], show_num=5, show=True, component="u")
 ```
 
 
