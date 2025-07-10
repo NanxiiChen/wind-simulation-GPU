@@ -103,7 +103,7 @@ class PanofskyWindSpectrum(WindSpectrumNonDimensional):
         """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
 
-class TeunissenWindSpectrum:
+class TeunissenWindSpectrum(WindSpectrumNonDimensional):
     """Teunissen wind spectrum class."""
 
     def __init__(self, **kwargs):
