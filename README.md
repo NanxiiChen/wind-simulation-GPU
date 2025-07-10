@@ -65,7 +65,7 @@ wind_speeds = positions[:, 0] * 0.2 + 25.0  # Example wind speeds based on x-coo
 u_samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u")
 
 # Visualize results
-visualizer = get_visualizer(backend="jax", **simulator.params)
+visualizer = get_visualizer(backend="jax", simulator=simulator)
 visualizer.plot_psd(u_samples, positions[:, -1], show_num=5, show=True, component="u")
 ```
 
