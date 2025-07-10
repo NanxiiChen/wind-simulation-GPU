@@ -28,7 +28,7 @@ def main():
     args = arg_parser.parse_args()
     backend = args.backend
     logging.info(f"Using backend: {backend}")
-    simulator = get_simulator(backend=backend, key=42, spectrum_type="teunissen")
+    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal")
 
     # Update simulator parameters
     simulator.update_parameters(
@@ -62,58 +62,27 @@ def main():
     else:
         raise ValueError(f"Unsupported backend: {backend}")
 
-
-    # Mean wind speed at each point
     wind_speeds = positions[:, 0] * 0.0 + 30.0  # Simulate linearly varying mean wind speed
 
-    # Record start time
     start_time = time.time()
-
-    # Simulate along-wind fluctuating wind
-    logging.info("Simulating along-wind fluctuating wind...")
-    u_samples, frequencies = simulator.simulate_wind(
-        positions, wind_speeds, component="u"
-    )
-
-    # Simulate vertical fluctuating wind
-    logging.info("Simulating vertical fluctuating wind...")
-    w_samples, frequencies = simulator.simulate_wind(
-        positions, wind_speeds, component="w"
-    )
-
-    # Print computation time
+    samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u")
     elapsed_time = time.time() - start_time
+
     logging.info(f"Simulation completed, elapsed time: {elapsed_time:.2f} seconds")
 
-    # visualizer = WindVisualizer(key=42, **simulator.params)
     visualizer = get_visualizer(backend=backend, key=42, simulator=simulator)
-    visualizer.plot_psd(
-        u_samples, positions[:, -1], show_num=6, show=True, component="u"
-    )
-    visualizer.plot_psd(
-        w_samples, positions[:, -1], show_num=6, show=True, component="w"
-    )
-
-    visualizer.plot_cross_correlation(
-        u_samples, positions, wind_speeds, show=True, component="u", indices=(1, 10)
-    )
-    visualizer.plot_cross_correlation(
-        w_samples, positions, wind_speeds, show=True, component="w", indices=(1, 10)
-    )
+    visualizer.plot_psd(samples, positions[:, -1], show_num=6, show=True, component="u")
+    visualizer.plot_cross_correlation(samples, positions, wind_speeds, show=True, component="u", indices=(1, 10))
 
     if backend == "jax":
         import jax.numpy as jnp
-        jnp.save("u_samples_jax.npy", u_samples)
-        jnp.save("w_samples_jax.npy", w_samples)
+        jnp.save("samples_jax.npy", samples)
     elif backend == "torch":
         import torch
-        u_samples = u_samples.detach().cpu().numpy()
-        w_samples = w_samples.detach().cpu().numpy()
-        np.save("u_samples_torch.npy", u_samples)
-        np.save("w_samples_torch.npy", w_samples)
+        samples = samples.detach().cpu().numpy()
+        np.save("samples_torch.npy", samples)
     elif backend == "numpy":
-        np.save("u_samples_numpy.npy", u_samples)
-        np.save("w_samples_numpy.npy", w_samples)
+        np.save("samples_numpy.npy", samples)
     else:
         raise ValueError(f"Unsupported backend: {backend}")
 
