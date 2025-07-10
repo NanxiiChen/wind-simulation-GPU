@@ -17,8 +17,9 @@ Key features include:
 
 ## Representative Results
 
-![Simulated Power Spectral Density](./img/wsamples-psd.png)
 
+![Power Spectral Density](./img/wsamples-psd.png)
+![Cross-Correlation](./img/samples-cor.png)
 
 
 ## Performance Comparison

@@ -10,7 +10,7 @@ from .psd import get_spectrum_class
 class JaxWindSimulator:
     """Stochastic wind field simulator class."""
 
-    def __init__(self, key=0, spectrum_type="kaimal"):
+    def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
         Initialize the wind field simulator.
 

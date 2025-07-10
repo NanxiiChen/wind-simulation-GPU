@@ -76,7 +76,7 @@ class WindSpectrumNonDimensional:
         return spectrum
     
 
-class KaimalWindSpectrum(WindSpectrumNonDimensional):
+class KaimalWindSpectrumNonDimensional(WindSpectrumNonDimensional):
     """Kaimal wind spectrum class."""
 
     def __init__(self, **kwargs):
@@ -90,7 +90,7 @@ class KaimalWindSpectrum(WindSpectrumNonDimensional):
         return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
 
 
-class PanofskyWindSpectrum(WindSpectrumNonDimensional):
+class PanofskyWindSpectrumNonDimensional(WindSpectrumNonDimensional):
     """Panofsky wind spectrum class."""
 
     def __init__(self, **kwargs):
@@ -103,7 +103,7 @@ class PanofskyWindSpectrum(WindSpectrumNonDimensional):
         """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
 
-class TeunissenWindSpectrum(WindSpectrumNonDimensional):
+class TeunissenWindSpectrumNonDimensional(WindSpectrumNonDimensional):
     """Teunissen wind spectrum class."""
 
     def __init__(self, **kwargs):
@@ -119,7 +119,7 @@ class TeunissenWindSpectrum(WindSpectrumNonDimensional):
     
 
 
-def get_spectrum_class(spectrum_type="kaimal", **kwargs):
+def get_spectrum_class(spectrum_type="kaimal-nd", **kwargs):
     """
     Get the appropriate wind spectrum class based on the specified type.
 
@@ -130,11 +130,11 @@ def get_spectrum_class(spectrum_type="kaimal", **kwargs):
     Returns:
         An instance of the specified wind spectrum class.
     """
-    if spectrum_type.lower() == "kaimal":
-        return KaimalWindSpectrum
-    elif spectrum_type.lower() == "teunissen":
-        return TeunissenWindSpectrum
-    elif spectrum_type.lower() == "panofsky":
-        return PanofskyWindSpectrum
+    if spectrum_type.lower() == "kaimal-nd":
+        return KaimalWindSpectrumNonDimensional
+    elif spectrum_type.lower() == "teunissen-nd":
+        return TeunissenWindSpectrumNonDimensional
+    elif spectrum_type.lower() == "panofsky-nd":
+        return PanofskyWindSpectrumNonDimensional
     else:
         raise ValueError(f"Unsupported spectrum type: {spectrum_type}")

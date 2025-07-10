@@ -28,7 +28,7 @@ def main():
     args = arg_parser.parse_args()
     backend = args.backend
     logging.info(f"Using backend: {backend}")
-    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal")
+    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
 
     # Update simulator parameters
     simulator.update_parameters(
