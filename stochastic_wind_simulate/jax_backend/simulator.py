@@ -4,12 +4,13 @@ from typing import Dict
 import jax.numpy as jnp
 from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
+from .psd import get_spectrum_class
 
 
 class JaxWindSimulator:
     """Stochastic wind field simulator class."""
 
-    def __init__(self, key=0):
+    def __init__(self, key=0, spectrum_type="kaimal"):
         """
         Initialize the wind field simulator.
 
@@ -18,6 +19,7 @@ class JaxWindSimulator:
         """
         self.key = random.PRNGKey(key)
         self.params = self._set_default_parameters()
+        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
         """Set default wind field simulation parameters."""
@@ -25,6 +27,7 @@ class JaxWindSimulator:
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
             "z_0": 0.05,  # Surface roughness height
+            "alpha_0": 0.16,  # Surface roughness exponent
             "C_x": 16.0,  # Decay coefficient in x direction
             "C_y": 6.0,  # Decay coefficient in y direction
             "C_z": 10.0,  # Decay coefficient in z direction
@@ -51,30 +54,7 @@ class JaxWindSimulator:
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
         )
-
-    @staticmethod
-    @jit
-    def calculate_friction_velocity(Z, U_d, z_0, z_d, K):
-        """Calculate wind friction velocity u_*."""
-        return K * U_d / jnp.log((Z - z_d) / z_0)
-
-    @staticmethod
-    @jit
-    def calculate_f(n, Z, U_d):
-        """Calculate dimensionless frequency f."""
-        return n * Z / U_d
-
-    @staticmethod
-    @jit
-    def calculate_power_spectrum_u(n, u_star, f):
-        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
-        return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
-
-    @staticmethod
-    @jit
-    def calculate_power_spectrum_w(n, u_star, f):
-        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
-        return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
+        self.spectrum.params = self.params  # Update spectrum parameters
 
     @staticmethod
     @jit
@@ -103,21 +83,8 @@ class JaxWindSimulator:
         # return jnp.array([(l - 0.5) * dw for l in range(1, N + 1)])
         return jnp.arange(1, N + 1) * dw - dw / 2
     
-    @partial(jit, static_argnums=(0,3))
-    def calculate_spectrum_for_position(self, freq, positions, spectrum_func):
-        u_stars = self.calculate_friction_velocity(
-            positions[:, 2],
-            self.params["U_d"],
-            self.params["z_0"],
-            self.params["z_d"],
-            self.params["K"],
-        )
-        f_values = self.calculate_f(freq, positions[:, 2], self.params["U_d"])
-        S_values = spectrum_func(freq, u_stars, f_values)
-        return S_values
 
-
-    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
+    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, component):
         """Build cross-spectral density matrix S(w)."""
         n = positions.shape[0]
 
@@ -132,9 +99,9 @@ class JaxWindSimulator:
         U_j = jnp.expand_dims(wind_speeds, 0).repeat(n, axis=0)  # [n, n]
 
         @partial(jit, static_argnums=(2,))
-        def _build_spectrum_for_position(freq, positions, spectrum_func):
-            s_values = self.calculate_spectrum_for_position(
-                freq, positions, spectrum_func
+        def _build_spectrum_for_position(freq, positions, component):
+            s_values = self.spectrum.calculate_power_spectrum(
+                freq, positions[:, 2], component
             )
             s_i = s_values.reshape(n, 1)  # [n, 1]
             s_j = s_values.reshape(1, n)  # [1, n]
@@ -149,11 +116,11 @@ class JaxWindSimulator:
         S_matrices = vmap(
             _build_spectrum_for_position,
             in_axes=(0, None, None),
-        )(frequencies, positions, spectrum_func)
+        )(frequencies, positions, component)
         
         return S_matrices
 
-    def simulate_wind(self, positions, wind_speeds, direction="u"):
+    def simulate_wind(self, positions, wind_speeds, component="u"):
         """
         Simulate fluctuating wind field.
 
@@ -171,10 +138,10 @@ class JaxWindSimulator:
             positions = jnp.array(positions)
 
         return self._simulate_fluctuating_wind(
-            positions, wind_speeds, subkey, direction
+            positions, wind_speeds, subkey, component
         )
 
-    def _simulate_fluctuating_wind(self, positions, wind_speeds, key, direction):
+    def _simulate_fluctuating_wind(self, positions, wind_speeds, key, component):
         """Internal implementation of wind field simulation."""
         n = positions.shape[0]
         N = self.params["N"]
@@ -182,15 +149,15 @@ class JaxWindSimulator:
         dw = self.params["dw"]
 
         frequencies = self.calculate_simulation_frequency(N, dw)
-        spectrum_func = (
-            self.calculate_power_spectrum_u
-            if direction == "u"
-            else self.calculate_power_spectrum_w
-        )
+        # spectrum_func = (
+        #     self.calculate_power_spectrum_u
+        #     if direction == "u"
+        #     else self.calculate_power_spectrum_w
+        # )
 
         # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
-            positions, wind_speeds, frequencies, spectrum_func
+            positions, wind_speeds, frequencies, component
         )
 
         # Perform Cholesky decomposition for each frequency point
@@ -245,6 +212,7 @@ class JaxWindSimulator:
             exponent = jnp.exp(1j * (p_indices * jnp.pi / M))
             terms = G[j] * exponent
             return jnp.sqrt(2 * dw) * jnp.real(terms)
+            # return 2*jnp.sqrt(dw/(2*jnp.pi)) * jnp.real(terms)
 
         wind_samples = vmap(compute_samples_for_point)(jnp.arange(n))
 
