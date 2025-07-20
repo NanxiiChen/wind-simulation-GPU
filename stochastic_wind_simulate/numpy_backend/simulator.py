@@ -1,16 +1,24 @@
 import numpy as np
 from typing import Dict, Tuple
 from scipy.linalg import cholesky
+from .psd import get_spectrum_class
 
 
 class NumpyWindSimulator:
     """Stochastic wind field simulator class implemented using NumPy - consistent logic with JAX version."""
 
-    def __init__(self, key=0):
-        """Initialize the wind field simulator."""
+    def __init__(self, key=0, spectrum_type="kaimal-nd"):
+        """
+        Initialize the wind field simulator.
+        
+        Args:
+            key: Random number seed
+            spectrum_type: Type of wind spectrum to use
+        """
         self.seed = key
         np.random.seed(key)
         self.params = self._set_default_parameters()
+        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
         """Set default wind field simulation parameters."""
@@ -18,6 +26,7 @@ class NumpyWindSimulator:
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
             "z_0": 0.05,  # Surface roughness height
+            "alpha_0": 0.16,  # Surface roughness exponent
             "C_x": 16.0,  # Decay coefficient in x direction
             "C_y": 6.0,  # Decay coefficient in y direction
             "C_z": 10.0,  # Decay coefficient in z direction
@@ -44,26 +53,7 @@ class NumpyWindSimulator:
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
         )
-
-    @staticmethod
-    def calculate_friction_velocity(Z, U_d, z_0, z_d, K):
-        """Calculate wind friction velocity u_*."""
-        return K * U_d / np.log((Z - z_d) / z_0)
-
-    @staticmethod
-    def calculate_f(n, Z, U_d):
-        """Calculate dimensionless frequency f."""
-        return n * Z / U_d
-
-    @staticmethod
-    def calculate_power_spectrum_u(n, u_star, f):
-        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
-        return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
-
-    @staticmethod
-    def calculate_power_spectrum_w(n, u_star, f):
-        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
-        return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
+        self.spectrum.params = self.params  # Update spectrum parameters
 
     @staticmethod
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
@@ -89,66 +79,56 @@ class NumpyWindSimulator:
         """Calculate simulation frequency array."""
         return np.arange(1, N + 1) * dw - dw / 2
 
-    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, spectrum_func):
-        """Build cross-spectral density matrix S(w) - fully corresponding to JAX version."""
+    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, component, **kwargs):
+        """Build cross-spectral density matrix S(w) using the new spectrum interface."""
         n = positions.shape[0]
         num_freqs = len(frequencies)
 
-        # Calculate friction velocity at each point
-        u_stars = self.calculate_friction_velocity(
-            positions[:, 2],
-            self.params["U_d"], 
-            self.params["z_0"], 
-            self.params["z_d"], 
-            self.params["K"]
-        )
-
-        # Calculate f values
-        f_values_all = np.zeros((num_freqs, n))
-        for freq_idx, freq in enumerate(frequencies):
-            f_values_all[freq_idx] = self.calculate_f(freq, positions[:, 2], self.params["U_d"])
-
-        # Calculate power spectral density
-        S_values_all = np.zeros((num_freqs, n))
-        for freq_idx in range(num_freqs):
-            S_values_all[freq_idx] = spectrum_func(
-                frequencies[freq_idx], u_stars, f_values_all[freq_idx]
+        def _build_spectrum_for_position(freq, positions, component, **kwargs):
+            s_values = self.spectrum.calculate_power_spectrum(
+                freq, positions[:, 2], component, **kwargs
             )
-
-        # Create grid coordinates - directly corresponding to JAX implementation
-        x_i = positions[:, 0][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-        x_j = positions[:, 0][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-        y_i = positions[:, 1][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-        y_j = positions[:, 1][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-        z_i = positions[:, 2][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-        z_j = positions[:, 2][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-        
-        U_i = wind_speeds[:, np.newaxis].repeat(n, axis=1)  # [n, n]
-        U_j = wind_speeds[np.newaxis, :].repeat(n, axis=0)  # [n, n]
-        
-        # Initialize result matrix
-        S_matrices = np.zeros((num_freqs, n, n))
-        
-        # Calculate cross-spectral matrix for each frequency
-        for freq_idx, freq in enumerate(frequencies):
-            # Calculate coherence function
+            s_i = s_values.reshape(n, 1)  # [n, 1]
+            s_j = s_values.reshape(1, n)  # [1, n]
+            
+            # Create grid coordinates
+            x_i = positions[:, 0][:, np.newaxis].repeat(n, axis=1)  # [n, n]
+            x_j = positions[:, 0][np.newaxis, :].repeat(n, axis=0)  # [n, n]
+            y_i = positions[:, 1][:, np.newaxis].repeat(n, axis=1)  # [n, n]
+            y_j = positions[:, 1][np.newaxis, :].repeat(n, axis=0)  # [n, n]
+            z_i = positions[:, 2][:, np.newaxis].repeat(n, axis=1)  # [n, n]
+            z_j = positions[:, 2][np.newaxis, :].repeat(n, axis=0)  # [n, n]
+            U_i = wind_speeds[:, np.newaxis].repeat(n, axis=1)  # [n, n]
+            U_j = wind_speeds[np.newaxis, :].repeat(n, axis=0)  # [n, n]
+            
             coherence = self.calculate_coherence(
-                x_i, x_j, y_i, y_j, z_i, z_j, 
-                freq, U_i, U_j,
+                x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]
             )
-            
-            # Calculate cross-spectral density
-            S_i = S_values_all[freq_idx].reshape(n, 1)  # [n, 1]
-            S_j = S_values_all[freq_idx].reshape(1, n)  # [1, n]
-            cross_spectrum = np.sqrt(S_i * S_j) * coherence
-            
-            S_matrices[freq_idx] = cross_spectrum
+            cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
+            return cross_spectrum
+        
+        # Compute cross-spectral density matrix for each frequency point
+        S_matrices = np.array([
+            _build_spectrum_for_position(freq, positions, component, **kwargs)
+            for freq in frequencies
+        ])
         
         return S_matrices
 
-    def simulate_wind(self, positions, wind_speeds, direction="u"):
-        """Simulate fluctuating wind field."""
+    def simulate_wind(self, positions, wind_speeds, component="u", **kwargs):
+        """
+        Simulate fluctuating wind field.
+        
+        Args:
+            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
+            wind_speeds: Array of shape (n,), represents mean wind speed at each point
+            component: Wind component, 'u' for along-wind, 'w' for vertical
+            
+        Returns:
+            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
+            frequencies: Frequency array
+        """
         np.random.seed(self.seed)
         self.seed += 1
         
@@ -157,27 +137,22 @@ class NumpyWindSimulator:
         wind_speeds = np.asarray(wind_speeds, dtype=np.float64)
         
         return self._simulate_fluctuating_wind(
-            positions, wind_speeds, direction
+            positions, wind_speeds, component, **kwargs
         )
 
-    def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
+    def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
         """Internal implementation of wind field simulation - corresponding to JAX version."""
         n = positions.shape[0]
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
 
-        # Calculate frequency and select spectral function
+        # Calculate frequency
         frequencies = self.calculate_simulation_frequency(N, dw)
-        spectrum_func = (
-            self.calculate_power_spectrum_u
-            if direction == "u"
-            else self.calculate_power_spectrum_w
-        )
 
         # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
-            positions, wind_speeds, frequencies, spectrum_func
+            positions, wind_speeds, frequencies, component, **kwargs
         )
 
         # Perform Cholesky decomposition for each frequency point
