@@ -6,15 +6,21 @@ from ..base_simulator import BaseWindSimulator
 
 
 class NumpyWindSimulator(BaseWindSimulator):
-    """Stochastic wind field simulator class implemented using NumPy - consistent logic with JAX version."""
+    """
+    Stochastic wind field simulator class implemented using NumPy.
+    
+    This class provides functionality for simulating fluctuating wind fields using
+    the spectral representation method with automatic batching for memory management.
+    NumPy backend uses CPU computations and is suitable for moderate-scale simulations.
+    """
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
         Initialize the wind field simulator.
         
         Args:
-            key: Random number seed
-            spectrum_type: Type of wind spectrum to use
+            key (int): Random number seed for reproducible results
+            spectrum_type (str): Type of wind spectrum to use (default: "kaimal-nd")
         """
         super().__init__()  # Initialize base class
         self.seed = key
@@ -22,7 +28,13 @@ class NumpyWindSimulator(BaseWindSimulator):
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
-        """Set default wind field simulation parameters."""
+        """
+        Set default wind field simulation parameters.
+        
+        Returns:
+            Dict: Dictionary containing default simulation parameters including
+                 physical constants, grid specifications, and numerical settings
+        """
         params = {
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
@@ -202,30 +214,30 @@ class NumpyWindSimulator(BaseWindSimulator):
         # Generate random phases - same as JAX version
         phi = np.random.uniform(0, 2*np.pi, (n, N))
 
-        # Calculate B matrix - 修正版本，与JAX版本保持一致
+        # Calculate B matrix - corrected version, consistent with JAX version
         B = np.zeros((n, M), dtype=np.complex128)
 
         for j in range(n):
-            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            # Create mask matrix where mask[m] = True if m <= j
             m_indices = np.arange(n)  # [n,]
-            mask = m_indices <= j  # [n,] 布尔掩码
+            mask = m_indices <= j  # [n,] boolean mask
             
-            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            # H_matrices[l, j, m] for all frequencies l of H_{jm}
             H_jm_all = H_matrices[:, j, :]  # [N, n]
             
-            # phi[m, l] -> phi.T 得到 [N, n]
+            # phi[m, l] -> phi.T to get [N, n]
             phi_transposed = phi.T  # [N, n]
             
-            # 计算 exp(i * phi_{ml})
+            # Calculate exp(i * phi_{ml})
             exp_terms = np.exp(1j * phi_transposed)  # [N, n]
             
-            # 应用掩码并求和
-            # 将mask广播到[N, n]的形状
+            # Apply mask and sum
+            # Broadcast mask to [N, n] shape
             mask_expanded = np.broadcast_to(mask, (N, n))  # [N, n]
             masked_terms = np.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
             B_values = np.sum(masked_terms, axis=1)  # [N,]
             
-            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            # Put B_values into the first N positions of B matrix, remaining positions stay 0
             B[j, :N] = B_values
         
         # FFT transform
@@ -321,30 +333,30 @@ class NumpyWindSimulator(BaseWindSimulator):
         # Generate random phases - use current random state for consistency
         phi = np.random.uniform(0, 2*np.pi, (n, N))
 
-        # Calculate B matrix - 与其他后端保持一致的逻辑
+        # Calculate B matrix - consistent with other backends
         B = np.zeros((n, M), dtype=np.complex128)
 
         for j in range(n):
-            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            # Create mask matrix where mask[m] = True if m <= j
             m_indices = np.arange(n)  # [n,]
-            mask = m_indices <= j  # [n,] 布尔掩码
+            mask = m_indices <= j  # [n,] boolean mask
             
-            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            # H_matrices[l, j, m] for all frequencies l of H_{jm}
             H_jm_all = H_matrices[:, j, :]  # [N, n]
             
-            # phi[m, l] -> phi.T 得到 [N, n]
+            # phi[m, l] -> phi.T to get [N, n]
             phi_transposed = phi.T  # [N, n]
             
-            # 计算 exp(i * phi_{ml})
+            # Calculate exp(i * phi_{ml})
             exp_terms = np.exp(1j * phi_transposed)  # [N, n]
             
-            # 应用掩码并求和
-            # 将mask广播到[N, n]的形状
+            # Apply mask and sum
+            # Broadcast mask to [N, n] shape
             mask_expanded = np.broadcast_to(mask, (N, n))  # [N, n]
             masked_terms = np.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
             B_values = np.sum(masked_terms, axis=1)  # [N,]
             
-            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            # Put B_values into the first N positions of B matrix, remaining positions stay 0
             B[j, :N] = B_values
         
         # FFT transform

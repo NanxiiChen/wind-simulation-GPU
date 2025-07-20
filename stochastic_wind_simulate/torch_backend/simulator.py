@@ -8,15 +8,21 @@ from ..base_simulator import BaseWindSimulator
 
 
 class TorchWindSimulator(BaseWindSimulator):
-    """Stochastic wind field simulator class implemented using PyTorch."""
+    """
+    Stochastic wind field simulator class implemented using PyTorch.
+    
+    This class provides functionality for simulating fluctuating wind fields using
+    the spectral representation method with automatic batching for memory management.
+    PyTorch backend offers GPU acceleration and flexible tensor operations.
+    """
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
         Initialize the wind field simulator.
 
         Args:
-            key: Random number seed
-            spectrum_type: Type of wind spectrum to use
+            key (int): Random number seed for reproducible results
+            spectrum_type (str): Type of wind spectrum to use (default: "kaimal-nd")
         """
         super().__init__()  # Initialize base class
         self.seed = key
@@ -27,7 +33,13 @@ class TorchWindSimulator(BaseWindSimulator):
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
-        """Set default wind field simulation parameters."""
+        """
+        Set default wind field simulation parameters.
+        
+        Returns:
+            Dict: Dictionary containing default simulation parameters including
+                 physical constants, grid specifications, and numerical settings
+        """
         params = {
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
@@ -68,7 +80,12 @@ class TorchWindSimulator(BaseWindSimulator):
             return torch.tensor(value, device=device)
 
     def update_parameters(self, **kwargs):
-        """Update simulation parameters."""
+        """
+        Update simulation parameters.
+        
+        Args:
+            **kwargs: Keyword arguments for parameters to update
+        """
         for key, value in kwargs.items():
             if key in self.params:
                 self.params[key] = value
@@ -271,28 +288,28 @@ class TorchWindSimulator(BaseWindSimulator):
         # Initialize B matrix
         B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
 
-        # 计算B矩阵 - 修正版本，与JAX版本保持一致
+        # Calculate B matrix - corrected version, consistent with JAX version
         for j in range(n):
-            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            # Create mask matrix where mask[m] = True if m <= j
             m_indices = torch.arange(n, device=self.device)  # [n,]
-            mask = m_indices <= j  # [n,] 布尔掩码
+            mask = m_indices <= j  # [n,] boolean mask
             
-            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            # H_matrices[l, j, m] for all frequencies l of H_{jm}
             H_jm_all = H_matrices[:, j, :]  # [N, n]
             
-            # phi[m, l] -> phi.T 得到 [N, n]
+            # phi[m, l] -> phi.T to get [N, n]
             phi_transposed = phi.t()  # [N, n]
             
-            # 计算 exp(i * phi_{ml})
+            # Calculate exp(i * phi_{ml})
             exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
             
-            # 应用掩码并求和
-            # 将mask广播到[N, n]的形状
+            # Apply mask and sum
+            # Broadcast mask to [N, n] shape
             mask_expanded = mask.unsqueeze(0).expand(N_int, -1)  # [N, n]
             masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
             B_values = torch.sum(masked_terms, dim=1)  # [N,]
             
-            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            # Put B_values into the first N positions of B matrix, remaining positions stay 0
             B[j, :N_int] = B_values
 
         # Compute FFT
@@ -397,28 +414,28 @@ class TorchWindSimulator(BaseWindSimulator):
         # Initialize B matrix
         B = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
 
-        # 计算B矩阵 - 与主要模拟方法保持一致
+        # Calculate B matrix - consistent with main simulation method
         for j in range(n):
-            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            # Create mask matrix where mask[m] = True if m <= j
             m_indices = torch.arange(n, device=self.device)  # [n,]
-            mask = m_indices <= j  # [n,] 布尔掩码
+            mask = m_indices <= j  # [n,] boolean mask
             
-            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            # H_matrices[l, j, m] for all frequencies l of H_{jm}
             H_jm_all = H_matrices[:, j, :]  # [N, n]
             
-            # phi[m, l] -> phi.T 得到 [N, n]
+            # phi[m, l] -> phi.T to get [N, n]
             phi_transposed = phi.t()  # [N, n]
             
-            # 计算 exp(i * phi_{ml})
+            # Calculate exp(i * phi_{ml})
             exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
             
-            # 应用掩码并求和
-            # 将mask广播到[N, n]的形状
+            # Apply mask and sum
+            # Broadcast mask to [N, n] shape
             mask_expanded = mask.unsqueeze(0).expand(N, -1)  # [N, n]
             masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
             B_values = torch.sum(masked_terms, dim=1)  # [N,]
             
-            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            # Put B_values into the first N positions of B matrix, remaining positions stay 0
             B[j, :N] = B_values
 
         # Compute FFT

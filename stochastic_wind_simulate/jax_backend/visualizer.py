@@ -11,11 +11,28 @@ from .psd import get_spectrum_class
 
 
 class JaxWindVisualizer:
+    """
+    Wind field visualization class implemented using JAX.
+    
+    This class provides functionality for visualizing wind field simulation results,
+    including power spectral density plots and cross-correlation analysis.
+    JAX backend offers JIT compilation and automatic differentiation capabilities.
+    """
 
     def __init__(self, key=0, 
                  simulator: JaxWindSimulator = None, 
                  spectrum_type: str = "kaimal",
                  **kwargs):
+        """
+        Initialize the wind field visualizer.
+
+        Args:
+            key (int): Random number seed for reproducible results
+            simulator (Optional[JaxWindSimulator]): Wind field simulator instance, 
+                                                   creates new instance if None
+            spectrum_type (str): Type of spectrum model to use (default: "kaimal")
+            **kwargs: Additional parameters passed to the simulator
+        """
         self.key = random.PRNGKey(key)
         self.simulator = simulator if simulator else JaxWindSimulator(key)
 
@@ -31,7 +48,23 @@ class JaxWindVisualizer:
         indices: Optional[Union[int, Tuple[int, int]]] = None,
         **kwargs,
     ):
-        """绘制模拟结果"""
+        """
+        Plot power spectral density comparison between simulation and theory.
+
+        Args:
+            wind_samples (jnp.ndarray): Simulated wind field samples
+            Zs (jnp.ndarray): Height coordinates
+            show_num (int): Number of random samples to display
+            save_path (Optional[str]): Path to save the plot
+            show (bool): Whether to display the plot
+            component (str): Wind component to plot ("u", "v", or "w")
+            indices (Optional[Union[int, Tuple[int, int]]]): Specific indices to plot,
+                if None, random indices are selected
+            **kwargs: Additional plotting parameters
+
+        Returns:
+            None
+        """
         n = wind_samples.shape[0]
 
         if indices is None:
@@ -42,7 +75,7 @@ class JaxWindVisualizer:
         elif isinstance(indices, tuple) and len(indices) == 2:
             pass
         else:
-            raise ValueError("indices必须是整数或整数序列")
+            raise ValueError("indices must be an integer or sequence of integers")
 
         ncol = kwargs.get("ncol", 3)
         nrow = (len(indices) + ncol - 1) // ncol
@@ -94,7 +127,16 @@ class JaxWindVisualizer:
             plt.close()
 
     def _compute_correlation(self, data_i, data_j):
-        """计算样本互相关函数 - 使用最大值归一化"""
+        """
+        Compute sample cross-correlation function with maximum value normalization.
+
+        Args:
+            data_i: Time series data for first point
+            data_j: Time series data for second point
+
+        Returns:
+            Normalized cross-correlation array
+        """
         data_i_centered = data_i - jnp.mean(data_i)
         data_j_centered = data_j - jnp.mean(data_j)
         
@@ -102,13 +144,24 @@ class JaxWindVisualizer:
             data_i_centered, data_j_centered, mode="full"
         )
         
-        # 使用最大值归一化（与理论值保持一致）
+        # Use maximum value normalization (consistent with theoretical values)
         corr_max = jnp.max(jnp.abs(correlation))
         return correlation / (corr_max if corr_max > 0 else 1.0)
 
     def _calculate_theoretical_correlation(self, S_ii, S_jj, coherence, M):
-        """计算理论互相关函数 - 保持最大值归一化"""
-        # 原有计算逻辑保持不变
+        """
+        Calculate theoretical cross-correlation function with maximum value normalization.
+
+        Args:
+            S_ii: Power spectral density at point i
+            S_jj: Power spectral density at point j
+            coherence: Coherence function between points
+            M: Number of frequency points
+
+        Returns:
+            Normalized theoretical cross-correlation array
+        """
+        # Original calculation logic preserved
         cross_spectrum = jnp.sqrt(S_ii * S_jj) * coherence
 
         full_spectrum = jnp.zeros(M, dtype=jnp.complex64)
@@ -137,7 +190,24 @@ class JaxWindVisualizer:
         downsample=1,
         **kwargs,
     ):
-        """绘制互相关函数并与理论值比较（优化版本）"""
+        """
+        Plot cross-correlation function and compare with theoretical values.
+
+        Args:
+            wind_samples: Wind field samples array
+            positions: Spatial positions of measurement points  
+            wind_speeds: Wind speed values
+            save_path (Optional[str]): Path to save the plot
+            show (bool): Whether to display the plot
+            component (str): Wind component to analyze ("u", "v", or "w")
+            indices (Optional[Union[int, Tuple[int, int]]]): Point indices for correlation,
+                if None, random indices are selected
+            downsample (int): Downsampling factor for data
+            **kwargs: Additional plotting parameters
+
+        Returns:
+            None
+        """
         n = wind_samples.shape[0]
 
         if downsample > 1:
@@ -155,18 +225,18 @@ class JaxWindVisualizer:
         elif isinstance(indices, tuple) and len(indices) == 2:
             pass
         else:
-            raise ValueError("indices必须是整数或两个整数的元组")
+            raise ValueError("indices must be an integer or tuple of two integers")
 
         i, j = indices
         data_i = wind_samples[i]
         data_j = wind_samples[j]
 
-        # 计算实际互相关函数
+        # Compute actual cross-correlation function
         correlation = self._compute_correlation(data_i, data_j)
         lags = jnp.arange(-len(data_i) + 1, len(data_i))
         lag_times = lags * dt
 
-        # 提取位置信息
+        # Extract position information
         x_i, y_i, z_i = positions[i]
         x_j, y_j, z_j = positions[j]
         U_zi, U_zj = wind_speeds[i], wind_speeds[j]
@@ -212,7 +282,7 @@ class JaxWindVisualizer:
         plot_corr = correlation[mid - range_points : mid + range_points + 1]
         plot_lag_times = lag_times[mid - range_points : mid + range_points + 1]
 
-        # 截取相同范围的理论相关函数
+        # Cut theoretical correlation function to same range
         theo_mid = len(theo_correlation) // 2
         theo_plot = theo_correlation[
             theo_mid - range_points : theo_mid + range_points + 1
@@ -290,7 +360,7 @@ class JaxWindVisualizer:
     #     elif isinstance(indices, tuple) and len(indices) == 2:
     #         pass
     #     else:
-    #         raise ValueError("indices必须是整数或两个整数的元组")
+    #         raise ValueError("indices must be an integer or tuple of two integers")
         
     #     i, j = indices
     #     data_i = wind_samples[i]

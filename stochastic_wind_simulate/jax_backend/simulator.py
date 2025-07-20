@@ -9,21 +9,34 @@ from ..base_simulator import BaseWindSimulator
 
 
 class JaxWindSimulator(BaseWindSimulator):
-    """Stochastic wind field simulator class."""
+    """
+    Stochastic wind field simulator class implemented using JAX.
+    
+    This class provides functionality for simulating fluctuating wind fields using
+    the spectral representation method with automatic batching for memory management.
+    JAX backend offers GPU acceleration and efficient vectorized computations.
+    """
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
         Initialize the wind field simulator.
 
         Args:
-            key: JAX random number seed
+            key (int): JAX random number seed for reproducible results
+            spectrum_type (str): Type of wind spectrum to use (default: "kaimal-nd")
         """
         super().__init__()  # Initialize base class
         self.key = random.PRNGKey(key)
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
-        """Set default wind field simulation parameters."""
+        """
+        Set default wind field simulation parameters.
+        
+        Returns:
+            Dict: Dictionary containing default simulation parameters including
+                 physical constants, grid specifications, and numerical settings
+        """
         params = {
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
@@ -103,7 +116,20 @@ class JaxWindSimulator(BaseWindSimulator):
     @staticmethod
     @jit
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
-        """Calculate spatial correlation function Coh."""
+        """
+        Calculate spatial coherence function for wind field correlation.
+        
+        Args:
+            x_i, x_j: X-coordinates of points i and j
+            y_i, y_j: Y-coordinates of points i and j  
+            z_i, z_j: Z-coordinates of points i and j
+            w: Frequency (rad/s)
+            U_zi, U_zj: Wind speeds at points i and j
+            C_x, C_y, C_z: Decay coefficients in x, y, z directions
+            
+        Returns:
+            Coherence value between 0 and 1
+        """
         distance_term = jnp.sqrt(
             C_x**2 * (x_i - x_j) ** 2
             + C_y**2 * (y_i - y_j) ** 2
@@ -118,18 +144,52 @@ class JaxWindSimulator(BaseWindSimulator):
     @staticmethod
     @jit
     def calculate_cross_spectrum(S_ii, S_jj, coherence):
-        """Calculate cross-spectral density function S_ij."""
+        """
+        Calculate cross-spectral density function S_ij.
+        
+        Args:
+            S_ii: Auto-spectral density at point i
+            S_jj: Auto-spectral density at point j
+            coherence: Coherence function between points i and j
+            
+        Returns:
+            Cross-spectral density S_ij
+        """
         return jnp.sqrt(S_ii * S_jj) * coherence
 
     @staticmethod
     def calculate_simulation_frequency(N, dw):
-        """Calculate simulation frequency array."""
-        # return jnp.array([(l - 0.5) * dw for l in range(1, N + 1)])
+        """
+        Calculate simulation frequency array.
+        
+        Args:
+            N (int): Number of frequency segments
+            dw (float): Frequency increment
+            
+        Returns:
+            Array of simulation frequencies
+        """
         return jnp.arange(1, N + 1) * dw - dw / 2
     
 
     def build_spectrum_matrix(self, positions, wind_speeds, frequencies, component, **kwargs):
-        """Build cross-spectral density matrix S(w)."""
+        """
+        Build cross-spectral density matrix S(w) for given frequencies.
+        
+        This method constructs the cross-spectral density matrices for all frequency
+        points, which describe the correlation between wind fluctuations at different
+        spatial locations.
+        
+        Args:
+            positions: Array of shape (n, 3) with spatial coordinates
+            wind_speeds: Array of shape (n,) with wind speeds at each point
+            frequencies: Array of frequencies to compute spectra for
+            component: Wind component ('u' for along-wind, 'w' for vertical)
+            **kwargs: Additional parameters for spectrum calculation
+            
+        Returns:
+            Array of shape (n_freq, n, n) containing cross-spectral density matrices
+        """
         n = positions.shape[0]
 
         x_i = jnp.expand_dims(positions[:, 0], 1).repeat(n, axis=1)  # [n, n]
@@ -225,7 +285,21 @@ class JaxWindSimulator(BaseWindSimulator):
             )
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
-        """Internal implementation of wind field simulation for small-scale problems."""
+        """
+        Internal implementation of wind field simulation for small-scale problems.
+        
+        This method performs direct simulation without batching, suitable for
+        problems that fit within memory constraints.
+        
+        Args:
+            positions: Array of shape (n, 3) with spatial coordinates
+            wind_speeds: Array of shape (n,) with wind speeds at each point
+            component: Wind component ('u' or 'w')
+            **kwargs: Additional parameters
+            
+        Returns:
+            Tuple of (wind_samples, frequencies) where wind_samples has shape (n, M)
+        """
         self.key, subkey = random.split(self.key)
         
         n = positions.shape[0]
@@ -395,7 +469,7 @@ class JaxWindSimulator(BaseWindSimulator):
             jnp.arange(n), N, M, n, H_matrices, phi
         )
         
-        # FFT计算G
+        # Compute FFT to get G
         G = vmap(jit(jnp.fft.ifft))(B) * M
 
         # Calculate wind field samples

@@ -8,27 +8,34 @@ from .simulator import NumpyWindSimulator
 
 
 class NumpyWindVisualizer:
-    """随机风场可视化器类"""
+    """
+    Wind field visualization class implemented using NumPy.
+    
+    This class provides functionality for visualizing wind field simulation results,
+    including power spectral density plots and cross-correlation analysis.
+    NumPy backend offers simplicity and broad compatibility.
+    """
 
     def __init__(self, key=0, simulator: Optional[NumpyWindSimulator] = None, **kwargs):
         """
-        初始化风场可视化器
+        Initialize the wind field visualizer.
 
-        参数:
-            key: 随机数种子
-            simulator: 风场模拟器实例，如果为 None 则创建新实例
-            **kwargs: 传递给模拟器的其他参数
+        Args:
+            key (int): Random number seed for reproducible results
+            simulator (Optional[NumpyWindSimulator]): Wind field simulator instance, 
+                                                     creates new instance if None
+            **kwargs: Additional parameters passed to the simulator
         """
         self.seed = key
         np.random.seed(key)
         self.simulator = simulator if simulator else NumpyWindSimulator(key)
 
-        # 设置参数
+        # Set parameters
         self.params = {}
         for key, value in kwargs.items():
             self.params[key] = value
 
-        # 如果没有提供参数，使用模拟器的参数
+        # If no parameters provided, use simulator's parameters
         if not self.params and hasattr(self.simulator, "params"):
             self.params = self.simulator.params
 
@@ -43,7 +50,23 @@ class NumpyWindVisualizer:
         indices: Optional[Union[int, Tuple[int, int]]] = None,
         **kwargs,
     ):
-        """绘制模拟结果"""
+        """
+        Plot power spectral density comparison between simulation and theory.
+
+        Args:
+            wind_samples (np.ndarray): Simulated wind field samples
+            Zs (np.ndarray): Height coordinates
+            show_num (int): Number of random samples to display
+            save_path (Optional[str]): Path to save the plot
+            show (bool): Whether to display the plot
+            component (str): Wind component to plot ("u", "v", or "w")
+            indices (Optional[Union[int, Tuple[int, int]]]): Specific indices to plot,
+                if None, random indices are selected
+            **kwargs: Additional plotting parameters
+
+        Returns:
+            None
+        """
         n = wind_samples.shape[0]
 
         if indices is None:
@@ -55,7 +78,7 @@ class NumpyWindVisualizer:
         elif isinstance(indices, tuple) and len(indices) == 2:
             pass
         else:
-            raise ValueError("indices必须是整数或整数序列")
+            raise ValueError("indices must be an integer or sequence of integers")
 
         ncol = kwargs.get("ncol", 3)
         nrow = (len(indices) + ncol - 1) // ncol

@@ -10,16 +10,23 @@ from .simulator import TorchWindSimulator
 
 
 class TorchWindVisualizer:
-    """随机风场可视化器类"""
+    """
+    Wind field visualization class implemented using PyTorch.
+    
+    This class provides functionality for visualizing wind field simulation results,
+    including power spectral density plots and cross-correlation analysis.
+    PyTorch backend offers GPU acceleration for computational operations.
+    """
 
     def __init__(self, key=0, simulator: Optional[TorchWindSimulator] = None, **kwargs):
         """
-        初始化风场可视化器
+        Initialize the wind field visualizer.
 
-        参数:
-            key: 随机数种子
-            simulator: 风场模拟器实例，如果为 None 则创建新实例
-            **kwargs: 传递给模拟器的其他参数
+        Args:
+            key (int): Random number seed for reproducible results
+            simulator (Optional[TorchWindSimulator]): Wind field simulator instance, 
+                                                     creates new instance if None
+            **kwargs: Additional parameters passed to the simulator
         """
         self.seed = key
         torch.manual_seed(key)
@@ -37,14 +44,14 @@ class TorchWindVisualizer:
 
     def _to_tensor(self, value, device=None):
         """
-        将输入安全地转换为设备上的张量
+        Safely convert input to tensor on device.
 
-        参数:
-            value: 要转换的值（张量或其他类型）
-            device: 目标设备，默认使用类的设备
+        Args:
+            value: Value to convert (tensor or other type)
+            device: Target device, defaults to class device
 
-        返回:
-            在指定设备上的张量
+        Returns:
+            torch.Tensor: Tensor on specified device
         """
         if device is None:
             device = self.device
@@ -67,15 +74,17 @@ class TorchWindVisualizer:
         **kwargs,
     ):
         """
-        绘制功率谱密度图
+        Plot power spectral density of wind field simulation results.
 
-        参数:
-            wind_samples: 风速时间序列，形状为 (n_points, n_timesteps)
-            Zs: 高度，形状为 (n_points,)
-            show_num: 要显示的采样点数量
-            save_path: 保存图像的路径，如果不保存则为None
-            show: 是否显示图形
-            component: 风向，'u'表示顺风向，'w'表示竖向
+        Args:
+            wind_samples (np.ndarray): Wind speed time series, shape (n_points, n_timesteps)
+            Zs (torch.Tensor): Heights at each point, shape (n_points,)
+            show_num (int): Number of sampling points to display (default: 5)
+            save_path (Optional[str]): Path to save the image, None if not saving
+            show (bool): Whether to display the plot (default: True)
+            component (str): Wind component, 'u' for along-wind, 'w' for vertical
+            indices (Optional[Union[int, Tuple[int, int]]]): Point indices to plot
+            **kwargs: Additional plotting parameters
         """
         n = wind_samples.shape[0]
 
@@ -92,7 +101,7 @@ class TorchWindVisualizer:
         elif isinstance(indices, tuple) or isinstance(indices, list):
             pass
         else:
-            raise ValueError("indices必须是整数或整数元组")
+            raise ValueError("indices must be an integer or integer tuple")
 
         ncol = kwargs.get("ncol", 3)
         nrow = (len(indices) + ncol - 1) // ncol
@@ -120,7 +129,7 @@ class TorchWindVisualizer:
 
         fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
         axes = axes.flatten() if nrow > 1 else [axes]
-        # 计算并绘制每个采样点的功率谱密度
+        # Calculate and plot power spectral density for each sampling point
         for idx, i in enumerate(indices):
             ax = axes[idx]
             data = wind_samples[i]
@@ -133,7 +142,7 @@ class TorchWindVisualizer:
             )
             ax.loglog(frequencies, psd, label=f"Point {i+1}")
 
-            # 绘制理论谱线
+            # Plot theoretical spectrum line
             ax.loglog(
                 frequencies_theory,
                 S_theory[:, i],
@@ -163,7 +172,16 @@ class TorchWindVisualizer:
     def _compute_correlation(
         self, data_i: np.ndarray, data_j: np.ndarray
     ) -> np.ndarray:
-        """计算互相关函数"""
+        """
+        Compute cross-correlation function between two time series.
+        
+        Args:
+            data_i (np.ndarray): First time series data
+            data_j (np.ndarray): Second time series data
+            
+        Returns:
+            np.ndarray: Normalized cross-correlation function
+        """
         data_i_centered = data_i - np.mean(data_i)
         data_j_centered = data_j - np.mean(data_j)
 
@@ -174,16 +192,27 @@ class TorchWindVisualizer:
     def _calculate_theoretical_correlation(
         self, S_ii: Tensor, S_jj: Tensor, coherence: Tensor, M: int
     ) -> np.ndarray:
-        """计算理论互相关函数（通过傅里叶逆变换）"""
-        # 将输入转换为PyTorch张量
+        """
+        Calculate theoretical cross-correlation function via inverse Fourier transform.
+        
+        Args:
+            S_ii (Tensor): Auto-spectral density at point i
+            S_jj (Tensor): Auto-spectral density at point j
+            coherence (Tensor): Coherence function between points i and j
+            M (int): Number of time points
+            
+        Returns:
+            np.ndarray: Theoretical cross-correlation function
+        """
+        # Convert inputs to PyTorch tensors
         S_ii = torch.as_tensor(S_ii, device=self.device)
         S_jj = torch.as_tensor(S_jj, device=self.device)
         coherence = torch.as_tensor(coherence, device=self.device)
 
-        # 计算互谱密度
+        # Calculate cross-spectral density
         cross_spectrum = torch.sqrt(S_ii * S_jj) * coherence
 
-        # 准备完整的频谱
+        # Prepare complete frequency spectrum
         full_spectrum = torch.zeros(M, dtype=torch.complex64, device=self.device)
         N = len(coherence)
         full_spectrum[1 : N + 1] = torch.complex(
@@ -193,7 +222,7 @@ class TorchWindVisualizer:
             torch.conj(full_spectrum[1 : N + 1]), dims=[0]
         )
 
-        # 执行IFFT获得理论互相关函数
+        # Execute IFFT to get theoretical cross-correlation function
         theo_correlation = torch.real(torch.fft.ifft(full_spectrum))
         theo_correlation = torch.fft.fftshift(theo_correlation)
 
@@ -216,21 +245,21 @@ class TorchWindVisualizer:
         **kwargs,
     ):
         """
-        绘制互相关函数并与理论值比较
+        Plot cross-correlation function and compare with theoretical values.
 
-        参数:
-            wind_samples: 风速时间序列，形状为 (n_points, n_timesteps)
-            positions: 位置坐标，形状为 (n_points, 3)
-            wind_speeds: 平均风速，形状为 (n_points,)
-            save_path: 保存图像的路径，如果不保存则为None
-            show: 是否显示图形
-            component: 风向，'u'表示顺风向，'w'表示竖向
-            indices: 要计算互相关的两个点的索引，为None时随机选择
-            downsample: 降采样因子，用于加快计算
-            **kwargs: 额外参数
+        Args:
+            wind_samples (np.ndarray): Wind speed time series, shape (n_points, n_timesteps)
+            positions (np.ndarray): Position coordinates, shape (n_points, 3)
+            wind_speeds (np.ndarray): Mean wind speeds, shape (n_points,)
+            save_path (Optional[str]): Path to save the image, None if not saving
+            show (bool): Whether to display the plot
+            component (str): Wind component, 'u' for along-wind, 'w' for vertical
+            indices (Optional[Union[int, Tuple[int, int]]]): Indices of two points for cross-correlation
+            downsample (int): Downsampling factor to speed up computation
+            **kwargs: Additional parameters
 
-        返回:
-            indices: 使用的索引对
+        Returns:
+            Tuple[int, int]: Indices pair used for computation
         """
         n = wind_samples.shape[0]
 

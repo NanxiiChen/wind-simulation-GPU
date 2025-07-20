@@ -63,9 +63,6 @@ def main():
         u_samples, frequencies = simulator.simulate_wind(
             positions, wind_speeds, direction="u"
         )
-        w_samples, frequencies = simulator.simulate_wind(
-            positions, wind_speeds, direction="w"
-        )
 
         elapsed_time = time.time() - start_time
         time_costs.append(elapsed_time)
