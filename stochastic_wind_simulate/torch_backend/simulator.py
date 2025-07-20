@@ -4,9 +4,10 @@ import torch
 import torch.func as func
 from torch import Tensor
 from .psd import get_spectrum_class
+from ..base_simulator import BaseWindSimulator
 
 
-class TorchWindSimulator:
+class TorchWindSimulator(BaseWindSimulator):
     """Stochastic wind field simulator class implemented using PyTorch."""
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
@@ -17,12 +18,12 @@ class TorchWindSimulator:
             key: Random number seed
             spectrum_type: Type of wind spectrum to use
         """
+        super().__init__()  # Initialize base class
         self.seed = key
         torch.manual_seed(key)
 
         # Set computing device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.params = self._set_default_parameters()
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
@@ -177,14 +178,23 @@ class TorchWindSimulator:
         ])
         
         return S_matrices
-    def simulate_wind(self, positions, wind_speeds, component="u", **kwargs):
+    def simulate_wind(self, positions, wind_speeds, component="u", 
+                     max_memory_gb=4.0, point_batch_size=None, 
+                     freq_batch_size=None, auto_batch=True, **kwargs):
         """
-        Simulate fluctuating wind field.
+        Simulate fluctuating wind field with automatic batching for memory management.
+        
+        This method now uses batching by default to handle large-scale simulations
+        efficiently and avoid memory issues.
 
         Args:
             positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
             wind_speeds: Array of shape (n,), represents mean wind speed at each point
             component: Wind component, 'u' for along-wind, 'w' for vertical
+            max_memory_gb: Maximum memory limit in GB (default: 4.0)
+            point_batch_size: Manual point batch size (auto-calculate if None)
+            freq_batch_size: Manual frequency batch size (auto-calculate if None)
+            auto_batch: If True, automatically determine if batching is needed
 
         Returns:
             wind_samples: Array of shape (n, M), fluctuating wind time series at each point
@@ -192,7 +202,37 @@ class TorchWindSimulator:
         """
         if not isinstance(positions, Tensor):
             positions = torch.from_numpy(positions)
-        return self._simulate_fluctuating_wind(positions, wind_speeds, component, **kwargs)
+        
+        n = positions.shape[0]
+        N = self.params["N"]
+        
+        # Use base class method to determine batching strategy
+        use_batching, point_batch_size, freq_batch_size = self._should_use_batching(
+            n, N, max_memory_gb, point_batch_size, freq_batch_size, auto_batch
+        )
+        
+        # Print information about memory and batching decisions
+        estimated_memory = self.estimate_memory_requirement(n, N)
+        if use_batching:
+            n_point_batches = self._get_batch_info(n, point_batch_size)
+            n_freq_batches = self._get_batch_info(N, freq_batch_size)
+            self.print_batch_info(
+                estimated_memory, max_memory_gb, use_batching, 
+                point_batch_size, freq_batch_size, n_point_batches, n_freq_batches
+            )
+        else:
+            self.print_batch_info(estimated_memory, max_memory_gb, use_batching)
+        
+        if use_batching:
+            return self._simulate_wind_with_batching(
+                positions, wind_speeds, component, 
+                point_batch_size, freq_batch_size, **kwargs
+            )
+        else:
+            # Use the direct method for small problems
+            return self._simulate_fluctuating_wind(
+                positions, wind_speeds, component, **kwargs
+            )
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
         """Internal implementation of wind field simulation."""
@@ -265,3 +305,129 @@ class TorchWindSimulator:
 
         # Convert to NumPy array to ensure consistent output with JAX version
         return wind_samples.cpu().numpy(), frequencies.cpu().numpy()
+
+    def _simulate_wind_with_batching(self, positions, wind_speeds, component,
+                                   point_batch_size, freq_batch_size, **kwargs):
+        """Internal implementation of batched wind field simulation."""
+        n = positions.shape[0]
+        N = self.params["N"]
+        M = self.params["M"]
+        dw = self.params["dw"]
+        
+        # Use base class methods for batch calculations
+        n_point_batches = self._get_batch_info(n, point_batch_size)
+        n_freq_batches = self._get_batch_info(N, freq_batch_size)
+        
+        frequencies = self.calculate_simulation_frequency(N, dw, device=self.device)
+        
+        # Initialize result array
+        wind_samples = torch.zeros((n, M), device=self.device)
+        
+        # Process in batches
+        for point_batch_idx in range(n_point_batches):
+            start_point, end_point = self._get_batch_range(point_batch_idx, point_batch_size, n)
+            
+            batch_positions = positions[start_point:end_point]
+            batch_wind_speeds = wind_speeds[start_point:end_point]
+            
+            # Use base class method for progress reporting
+            self.print_batch_progress(point_batch_idx, n_point_batches, "point", start_point, end_point)
+            
+            # Process this point batch
+            batch_samples = self._simulate_point_batch(
+                batch_positions, batch_wind_speeds, component, 
+                freq_batch_size, frequencies, **kwargs
+            )
+            
+            wind_samples[start_point:end_point] = batch_samples
+        
+        # Convert to NumPy array to ensure consistent output with JAX version
+        return wind_samples.cpu().numpy(), frequencies.cpu().numpy()
+    
+    def _simulate_point_batch(self, positions, wind_speeds, component, 
+                            freq_batch_size, frequencies, **kwargs):
+        """Simulate a batch of points, potentially with frequency batching."""        
+        n = positions.shape[0]
+        N = self.params["N"]
+        M = self.params["M"]
+        dw = self.params["dw"]
+        
+        if freq_batch_size >= N:
+            # No frequency batching needed, use direct simulation
+            result = self._simulate_fluctuating_wind(positions, wind_speeds, component, **kwargs)
+            # Convert back to tensor if needed
+            if isinstance(result[0], torch.Tensor):
+                return result[0]
+            else:
+                return torch.tensor(result[0], device=self.device)
+        
+        # Build spectrum matrices in frequency batches
+        n_freq_batches = self._get_batch_info(N, freq_batch_size)
+        S_matrices_full = torch.zeros((N, n, n), device=self.device)
+        
+        for freq_batch_idx in range(n_freq_batches):
+            start_freq, end_freq = self._get_batch_range(freq_batch_idx, freq_batch_size, N)
+            
+            batch_frequencies = frequencies[start_freq:end_freq]
+            
+            # Build spectrum matrix for this frequency batch
+            S_batch = self.build_spectrum_matrix(
+                positions, wind_speeds, batch_frequencies, component, **kwargs
+            )
+            
+            S_matrices_full[start_freq:end_freq] = S_batch
+        
+        # Process the full spectrum for this point batch
+        return self._process_spectrum_to_samples(S_matrices_full, n, N, M, dw)
+    
+    def _process_spectrum_to_samples(self, S_matrices, n, N, M, dw):
+        """Process spectrum matrices to wind samples (extracted from main simulation)."""
+        # Perform Cholesky decomposition for each frequency point
+        def cholesky_with_reg(S):
+            return torch.linalg.cholesky(
+                S + torch.eye(n, device=self.device) * 1e-12
+            )
+
+        H_matrices = torch.stack([cholesky_with_reg(S_matrices[i]) for i in range(N)])
+
+        # Generate random phases - use the same seed for reproducibility
+        torch.manual_seed(self.seed)
+        phi = torch.rand((n, N), device=self.device) * 2 * torch.pi
+
+        # Initialize B matrix
+        B = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
+
+        # 计算B矩阵 - 与主要模拟方法保持一致
+        for j in range(n):
+            # 创建掩码矩阵，其中 mask[m] = True if m <= j
+            m_indices = torch.arange(n, device=self.device)  # [n,]
+            mask = m_indices <= j  # [n,] 布尔掩码
+            
+            # H_matrices[l, j, m] 对所有频率l的H_{jm}
+            H_jm_all = H_matrices[:, j, :]  # [N, n]
+            
+            # phi[m, l] -> phi.T 得到 [N, n]
+            phi_transposed = phi.t()  # [N, n]
+            
+            # 计算 exp(i * phi_{ml})
+            exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
+            
+            # 应用掩码并求和
+            # 将mask广播到[N, n]的形状
+            mask_expanded = mask.unsqueeze(0).expand(N, -1)  # [N, n]
+            masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
+            B_values = torch.sum(masked_terms, dim=1)  # [N,]
+            
+            # 将B_values放入B矩阵的前N个位置，其余位置保持为0
+            B[j, :N] = B_values
+
+        # Compute FFT
+        G = torch.fft.ifft(B, dim=1) * M
+
+        # Compute wind field samples
+        p_indices = torch.arange(M, device=self.device)
+        exponent = torch.exp(1j * (p_indices * torch.pi / M))
+        dw_tensor = torch.tensor(dw, device=self.device)
+        wind_samples = torch.sqrt(2 * dw_tensor) * (G * exponent.unsqueeze(0)).real
+
+        return wind_samples

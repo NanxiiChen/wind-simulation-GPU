@@ -5,9 +5,10 @@ import jax.numpy as jnp
 from jax import jit, random, vmap
 from jax.scipy.linalg import cholesky
 from .psd import get_spectrum_class
+from ..base_simulator import BaseWindSimulator
 
 
-class JaxWindSimulator:
+class JaxWindSimulator(BaseWindSimulator):
     """Stochastic wind field simulator class."""
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
@@ -17,8 +18,8 @@ class JaxWindSimulator:
         Args:
             key: JAX random number seed
         """
+        super().__init__()  # Initialize base class
         self.key = random.PRNGKey(key)
-        self.params = self._set_default_parameters()
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
@@ -43,18 +44,61 @@ class JaxWindSimulator:
 
         return params
 
-    def update_parameters(self, **kwargs):
-        """Update simulation parameters."""
-        for key, value in kwargs.items():
-            if key in self.params:
-                self.params[key] = value
+    def simulate_wind(self, positions, wind_speeds, component="u", 
+                     max_memory_gb=4.0, point_batch_size=None, 
+                     freq_batch_size=None, auto_batch=True, **kwargs):
+        """
+        Simulate fluctuating wind field with automatic batching for memory management.
+        
+        This method now uses batching by default to handle large-scale simulations
+        efficiently and avoid memory issues.
 
-        # Update dependent parameters
-        self.params["dw"] = self.params["w_up"] / self.params["N"]
-        self.params["z_d"] = (
-            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
+        Args:
+            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
+            wind_speeds: Array of shape (n,), represents mean wind speed at each point
+            component: Wind component, 'u' for along-wind, 'w' for vertical
+            max_memory_gb: Maximum memory limit in GB (default: 4.0)
+            point_batch_size: Manual point batch size (auto-calculate if None)
+            freq_batch_size: Manual frequency batch size (auto-calculate if None)
+            auto_batch: If True, automatically determine if batching is needed
+
+        Returns:
+            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
+            frequencies: Frequency array
+        """
+        if not isinstance(positions, jnp.ndarray):
+            positions = jnp.array(positions)
+        
+        n = positions.shape[0]
+        N = self.params["N"]
+        
+        # Use base class method to determine batching strategy
+        use_batching, point_batch_size, freq_batch_size = self._should_use_batching(
+            n, N, max_memory_gb, point_batch_size, freq_batch_size, auto_batch
         )
-        self.spectrum.params = self.params  # Update spectrum parameters
+        
+        # Print information about memory and batching decisions
+        estimated_memory = self.estimate_memory_requirement(n, N)
+        if use_batching:
+            n_point_batches = self._get_batch_info(n, point_batch_size)
+            n_freq_batches = self._get_batch_info(N, freq_batch_size)
+            self.print_batch_info(
+                estimated_memory, max_memory_gb, use_batching, 
+                point_batch_size, freq_batch_size, n_point_batches, n_freq_batches
+            )
+        else:
+            self.print_batch_info(estimated_memory, max_memory_gb, use_batching)
+        
+        if use_batching:
+            return self._simulate_wind_with_batching(
+                positions, wind_speeds, component, 
+                point_batch_size, freq_batch_size, **kwargs
+            )
+        else:
+            # Use the direct method for small problems
+            return self._simulate_fluctuating_wind(
+                positions, wind_speeds, component, **kwargs
+            )
 
     @staticmethod
     @jit
@@ -120,46 +164,206 @@ class JaxWindSimulator:
         
         return S_matrices
 
-    def simulate_wind(self, positions, wind_speeds, component="u", **kwargs):
+    def simulate_wind(self, positions, wind_speeds, component="u", 
+                     max_memory_gb=4.0, point_batch_size=None, 
+                     freq_batch_size=None, auto_batch=True, **kwargs):
         """
-        Simulate fluctuating wind field.
+        Simulate fluctuating wind field with automatic batching for memory management.
+        
+        This method now uses batching by default to handle large-scale simulations
+        efficiently and avoid memory issues.
 
         Args:
             positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
             wind_speeds: Array of shape (n,), represents mean wind speed at each point
-            direction: Wind direction, 'u' for along-wind, 'w' for vertical
+            component: Wind component, 'u' for along-wind, 'w' for vertical
+            max_memory_gb: Maximum memory limit in GB (default: 4.0)
+            point_batch_size: Manual point batch size (auto-calculate if None)
+            freq_batch_size: Manual frequency batch size (auto-calculate if None)
+            auto_batch: If True, automatically determine if batching is needed
 
         Returns:
             wind_samples: Array of shape (n, M), fluctuating wind time series at each point
             frequencies: Frequency array
         """
-        self.key, subkey = random.split(self.key)
         if not isinstance(positions, jnp.ndarray):
             positions = jnp.array(positions)
+        
+        n = positions.shape[0]
+        N = self.params["N"]
+        
+        # Estimate memory requirement
+        estimated_memory = self.estimate_memory_requirement(n, N)
+        
+        # Decide whether to use batching
+        use_batching = False
+        if auto_batch:
+            if estimated_memory > max_memory_gb:
+                use_batching = True
+        else:
+            # Force batching if batch sizes are specified
+            if point_batch_size is not None or freq_batch_size is not None:
+                use_batching = True
+        
+        if use_batching:
+            # Use provided batch sizes or calculate optimal ones
+            if point_batch_size is None or freq_batch_size is None:
+                optimal_point_batch, optimal_freq_batch = self.get_optimal_batch_sizes(n, N, max_memory_gb)
+                if point_batch_size is None:
+                    point_batch_size = optimal_point_batch
+                if freq_batch_size is None:
+                    freq_batch_size = optimal_freq_batch
+            
+            return self._simulate_wind_with_batching(
+                positions, wind_speeds, component, 
+                point_batch_size, freq_batch_size, **kwargs
+            )
+        else:
+            # Use the direct method for small problems
+            return self._simulate_fluctuating_wind(
+                positions, wind_speeds, component, **kwargs
+            )
 
-        return self._simulate_fluctuating_wind(
-            positions, wind_speeds, subkey, component, **kwargs
-        )
-
-    def _simulate_fluctuating_wind(self, positions, wind_speeds, key, component, **kwargs):
-        """Internal implementation of wind field simulation."""
+    def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
+        """Internal implementation of wind field simulation for small-scale problems."""
+        self.key, subkey = random.split(self.key)
+        
         n = positions.shape[0]
         N = self.params["N"]
         M = self.params["M"]
         dw = self.params["dw"]
 
         frequencies = self.calculate_simulation_frequency(N, dw)
-        # spectrum_func = (
-        #     self.calculate_power_spectrum_u
-        #     if direction == "u"
-        #     else self.calculate_power_spectrum_w
-        # )
 
         # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
             positions, wind_speeds, frequencies, component, **kwargs
         )
 
+        # Process spectrum matrices to samples
+        wind_samples = self._process_spectrum_to_samples(S_matrices, subkey, n, N, M, dw)
+
+        return wind_samples, frequencies
+
+    def simulate_wind_batched(self, positions, wind_speeds, component="u", 
+                            max_memory_gb=4.0, point_batch_size=None, 
+                            freq_batch_size=None, **kwargs):
+        """
+        Simulate fluctuating wind field with automatic batching for memory management.
+
+        Args:
+            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
+            wind_speeds: Array of shape (n,), represents mean wind speed at each point
+            component: Wind component, 'u' for along-wind, 'w' for vertical
+            max_memory_gb: Maximum memory limit in GB
+            point_batch_size: Manual point batch size (auto-calculate if None)
+            freq_batch_size: Manual frequency batch size (auto-calculate if None)
+
+        Returns:
+            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
+            frequencies: Frequency array
+        """
+        if not isinstance(positions, jnp.ndarray):
+            positions = jnp.array(positions)
+        
+        n = positions.shape[0]
+        N = self.params["N"]
+        
+        # Check if batching is needed
+        estimated_memory = self.estimate_memory_requirement(n, N)
+        print(f"Estimated memory requirement: {estimated_memory:.2f} GB")
+        
+        if estimated_memory <= max_memory_gb and point_batch_size is None and freq_batch_size is None:
+            # No batching needed, use regular simulation
+            print("Memory requirement within limit, using regular simulation")
+            return self.simulate_wind(positions, wind_speeds, component, **kwargs)
+        
+        # Use provided batch sizes or calculate optimal ones
+        if point_batch_size is None or freq_batch_size is None:
+            optimal_point_batch, optimal_freq_batch = self.get_optimal_batch_sizes(n, N, max_memory_gb)
+            if point_batch_size is None:
+                point_batch_size = optimal_point_batch
+            if freq_batch_size is None:
+                freq_batch_size = optimal_freq_batch
+        
+        print(f"Using batched simulation with point_batch_size={point_batch_size}, freq_batch_size={freq_batch_size}")
+        
+        return self._simulate_wind_with_batching(
+            positions, wind_speeds, component, 
+            point_batch_size, freq_batch_size, **kwargs
+        )
+
+    def _simulate_wind_with_batching(self, positions, wind_speeds, component,
+                                   point_batch_size, freq_batch_size, **kwargs):
+        """Internal implementation of batched wind field simulation."""
+        n = positions.shape[0]
+        N = self.params["N"]
+        M = self.params["M"]
+        dw = self.params["dw"]
+        
+        # Use base class methods for batch calculations
+        n_point_batches = self._get_batch_info(n, point_batch_size)
+        n_freq_batches = self._get_batch_info(N, freq_batch_size)
+        
+        frequencies = self.calculate_simulation_frequency(N, dw)
+        
+        # Initialize result array
+        wind_samples = jnp.zeros((n, M))
+        
+        # Process in batches
+        for point_batch_idx in range(n_point_batches):
+            start_point, end_point = self._get_batch_range(point_batch_idx, point_batch_size, n)
+            
+            batch_positions = positions[start_point:end_point]
+            batch_wind_speeds = wind_speeds[start_point:end_point]
+            
+            # Use base class method for progress reporting
+            self.print_batch_progress(point_batch_idx, n_point_batches, "point", start_point, end_point)
+            
+            # Process this point batch
+            batch_samples = self._simulate_point_batch(
+                batch_positions, batch_wind_speeds, component, 
+                freq_batch_size, frequencies, **kwargs
+            )
+            
+            wind_samples = wind_samples.at[start_point:end_point].set(batch_samples)
+        
+        return wind_samples, frequencies
+    
+    def _simulate_point_batch(self, positions, wind_speeds, component, 
+                            freq_batch_size, frequencies, **kwargs):
+        """Simulate a batch of points, potentially with frequency batching."""        
+        n = positions.shape[0]
+        N = self.params["N"]
+        M = self.params["M"]
+        dw = self.params["dw"]
+        
+        if freq_batch_size >= N:
+            # No frequency batching needed, use direct simulation
+            return self._simulate_fluctuating_wind(positions, wind_speeds, component, **kwargs)[0]
+        
+        # Build spectrum matrices in frequency batches
+        self.key, subkey = random.split(self.key)
+        n_freq_batches = self._get_batch_info(N, freq_batch_size)
+        S_matrices_full = jnp.zeros((N, n, n))
+        
+        for freq_batch_idx in range(n_freq_batches):
+            start_freq, end_freq = self._get_batch_range(freq_batch_idx, freq_batch_size, N)
+            
+            batch_frequencies = frequencies[start_freq:end_freq]
+            
+            # Build spectrum matrix for this frequency batch
+            S_batch = self.build_spectrum_matrix(
+                positions, wind_speeds, batch_frequencies, component, **kwargs
+            )
+            
+            S_matrices_full = S_matrices_full.at[start_freq:end_freq].set(S_batch)
+        
+        # Process the full spectrum for this point batch
+        return self._process_spectrum_to_samples(S_matrices_full, subkey, n, N, M, dw)
+    
+    def _process_spectrum_to_samples(self, S_matrices, key, n, N, M, dw):
+        """Process spectrum matrices to wind samples (extracted from main simulation)."""
         # Perform Cholesky decomposition for each frequency point
         @jit
         def cholesky_with_reg(S):
@@ -173,28 +377,17 @@ class JaxWindSimulator:
 
         @partial(jit, static_argnums=(1, 2, 3))
         def compute_B_for_point(j, N, M, n, H_matrices, phi):
-            """
-            计算第j个点的B值，完全向量化的实现
-            B_j(w_l) = sum_{m=1}^{j} H_{jm}(w_l) * exp(i * phi_{ml})
-            """
-            # 创建掩码矩阵 [N, n]，其中 mask[l, m] = True if m <= j
-            m_indices = jnp.arange(n)  # [n,]
-            mask = m_indices <= j  # [n,] 布尔掩码
+            """Compute B values for point j, fully vectorized implementation"""
+            m_indices = jnp.arange(n)
+            mask = m_indices <= j
             
-            # H_matrices[l, j, m] 对所有频率l的H_{jm}
-            H_jm_all = H_matrices[:, j, :]  # [N, n]
+            H_jm_all = H_matrices[:, j, :]
+            phi_transposed = phi.T
+            exp_terms = jnp.exp(1j * phi_transposed)
             
-            # phi[m, l] -> phi[:, :] -> phi.T 得到 [N, n]
-            phi_transposed = phi.T  # [N, n]
+            masked_terms = jnp.where(mask, H_jm_all * exp_terms, 0.0)
+            B_values = jnp.sum(masked_terms, axis=1)
             
-            # 计算 exp(i * phi_{ml})
-            exp_terms = jnp.exp(1j * phi_transposed)  # [N, n]
-            
-            # 应用掩码并求和
-            masked_terms = jnp.where(mask, H_jm_all * exp_terms, 0.0)  # [N, n]
-            B_values = jnp.sum(masked_terms, axis=1)  # [N,]
-            
-            # 零填充到M长度
             return jnp.pad(B_values, (0, M - N), mode="constant")
 
         # Parallel computation of B for each point
@@ -212,8 +405,7 @@ class JaxWindSimulator:
             exponent = jnp.exp(1j * (p_indices * jnp.pi / M))
             terms = G[j] * exponent
             return jnp.sqrt(2 * dw) * jnp.real(terms)
-            # return 2*jnp.sqrt(dw/(2*jnp.pi)) * jnp.real(terms)
 
         wind_samples = vmap(compute_samples_for_point)(jnp.arange(n))
-
-        return wind_samples, frequencies
+        
+        return wind_samples
