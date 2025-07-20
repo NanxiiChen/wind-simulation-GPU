@@ -5,16 +5,18 @@ import jax.numpy as jnp
 from jax import jit
 
 
-class WindSpectrumNonDimensional:
-    """Base class for non-dimensional wind spectrum."""
+class WindSpectrum:
+    """Base class for wind spectrum."""
 
     def __init__(self, **kwargs):
         """
         Initialize the Kaimal wind spectrum.
         """
         self.params = self._set_default_parameters()
+        self.params.update(kwargs)  # Update with any additional parameters
 
-    def _set_default_parameters(self) -> Dict:
+
+    def _set_default_parameters(self, **kwargs) -> Dict:
         """Set default parameters for the Kaimal wind spectrum."""
         params = {
             "K": 0.4,  # Dimensionless constant
@@ -28,16 +30,39 @@ class WindSpectrumNonDimensional:
             "dt": 0.1,  # Time step (s)
             "U_d": 25.0,  # Design basic wind speed (m/s)
         }
-        params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = (
             params["H_bar"] - params["z_0"] / params["K"]
         )  # Calculate zero plane displacement
 
         return params
     
+    def update_parameters(self, **kwargs):
+        """Update simulation parameters."""
+        for key, value in kwargs.items():
+            if key in self.params:
+                self.params[key] = value
+
+        # Update dependent parameters
+        self.params["z_d"] = (
+            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
+        )
+        self.params.update(kwargs)  # Update with any additional parameters
+
+    
     def calculate_mean_wind_speed(self, Z, U_d, alpha_0):
         """Calculate mean wind speed at height Z."""
         return U_d * (Z / 10) ** alpha_0
+    
+
+class WindSpectrumNonDimensional(WindSpectrum):
+    """Base class for non-dimensional wind spectrum."""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize the non-dimensional wind spectrum.
+        """
+        super().__init__(**kwargs)
+
     
     def calculate_f(self, n, Z, U_d, alpha_0):
         """Calculate the frequency-dependent function f."""
@@ -51,15 +76,19 @@ class WindSpectrumNonDimensional:
     
     def calculate_power_spectrum_u(self, n, u_star, f):
         """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError("Spectrum u are not defined in this class.")
+    
+    def calculate_power_spectrum_v(self, n, u_star, f):
+        """Calculate cross-wind fluctuating wind power spectral density S_v(n)."""
+        raise NotImplementedError("Spectrum v are not defined in this class.")
 
     def calculate_power_spectrum_w(self, n, u_star, f):
         """Calculate vertical fluctuating wind power spectral density S_w(n)."""
-        raise NotImplementedError("This method should be implemented in subclasses.")
+        raise NotImplementedError("Spectrum w are not defined in this class.")
 
     
     @partial(jit, static_argnums=(0,3))
-    def calculate_power_spectrum(self, freq, Zs, component):
+    def calculate_power_spectrum(self, freq, Zs, component, **kwargs):
         u_stars = self.calculate_friction_velocity(
             Zs, 
             self.params["U_d"], 
@@ -116,7 +145,7 @@ class TeunissenWindSpectrumNonDimensional(WindSpectrumNonDimensional):
     def calculate_power_spectrum_w(self, n, u_star, f):
         """Calculate vertical fluctuating wind power spectral density S_w(n)."""
         return (u_star**2 / n) * (2 * f / ((1 + 5.3 * f) ** (5 / 3)))
-    
+
 
 
 def get_spectrum_class(spectrum_type="kaimal-nd", **kwargs):

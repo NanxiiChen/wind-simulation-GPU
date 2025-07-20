@@ -84,7 +84,7 @@ class JaxWindSimulator:
         return jnp.arange(1, N + 1) * dw - dw / 2
     
 
-    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, component):
+    def build_spectrum_matrix(self, positions, wind_speeds, frequencies, component, **kwargs):
         """Build cross-spectral density matrix S(w)."""
         n = positions.shape[0]
 
@@ -99,9 +99,9 @@ class JaxWindSimulator:
         U_j = jnp.expand_dims(wind_speeds, 0).repeat(n, axis=0)  # [n, n]
 
         @partial(jit, static_argnums=(2,))
-        def _build_spectrum_for_position(freq, positions, component):
+        def _build_spectrum_for_position(freq, positions, component, **kwargs):
             s_values = self.spectrum.calculate_power_spectrum(
-                freq, positions[:, 2], component
+                freq, positions[:, 2], component, **kwargs
             )
             s_i = s_values.reshape(n, 1)  # [n, 1]
             s_j = s_values.reshape(1, n)  # [1, n]
@@ -120,7 +120,7 @@ class JaxWindSimulator:
         
         return S_matrices
 
-    def simulate_wind(self, positions, wind_speeds, component="u"):
+    def simulate_wind(self, positions, wind_speeds, component="u", **kwargs):
         """
         Simulate fluctuating wind field.
 
@@ -138,10 +138,10 @@ class JaxWindSimulator:
             positions = jnp.array(positions)
 
         return self._simulate_fluctuating_wind(
-            positions, wind_speeds, subkey, component
+            positions, wind_speeds, subkey, component, **kwargs
         )
 
-    def _simulate_fluctuating_wind(self, positions, wind_speeds, key, component):
+    def _simulate_fluctuating_wind(self, positions, wind_speeds, key, component, **kwargs):
         """Internal implementation of wind field simulation."""
         n = positions.shape[0]
         N = self.params["N"]
@@ -157,7 +157,7 @@ class JaxWindSimulator:
 
         # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
-            positions, wind_speeds, frequencies, component
+            positions, wind_speeds, frequencies, component, **kwargs
         )
 
         # Perform Cholesky decomposition for each frequency point
