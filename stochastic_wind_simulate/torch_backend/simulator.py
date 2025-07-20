@@ -3,17 +3,19 @@ from typing import Dict
 import torch
 import torch.func as func
 from torch import Tensor
+from .psd import get_spectrum_class
 
 
 class TorchWindSimulator:
     """Stochastic wind field simulator class implemented using PyTorch."""
 
-    def __init__(self, key=0):
+    def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
         Initialize the wind field simulator.
 
         Args:
             key: Random number seed
+            spectrum_type: Type of wind spectrum to use
         """
         self.seed = key
         torch.manual_seed(key)
@@ -21,6 +23,7 @@ class TorchWindSimulator:
         # Set computing device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.params = self._set_default_parameters()
+        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
     def _set_default_parameters(self) -> Dict:
         """Set default wind field simulation parameters."""
@@ -28,6 +31,7 @@ class TorchWindSimulator:
             "K": 0.4,  # Dimensionless constant
             "H_bar": 10.0,  # Average height of surrounding buildings (m)
             "z_0": 0.05,  # Surface roughness height
+            "alpha_0": 0.16,  # Surface roughness exponent
             "C_x": 16.0,  # Decay coefficient in x direction
             "C_y": 6.0,  # Decay coefficient in y direction
             "C_z": 10.0,  # Decay coefficient in z direction
@@ -73,31 +77,10 @@ class TorchWindSimulator:
         self.params["z_d"] = (
             self.params["H_bar"] - self.params["z_0"] / self.params["K"]
         )
+        self.spectrum.params = self.params  # Update spectrum parameters
 
-    def calculate_friction_velocity(
-        self, Z: Tensor, U_d: float, z_0: float, z_d: float, K: float
-    ) -> Tensor:
-        """Calculate wind friction velocity u_*."""
-        return K * U_d / torch.log((Z - z_d) / z_0)
-
-    def calculate_f(self, n: Tensor, Z: Tensor, U_d: float) -> Tensor:
-        """Calculate dimensionless frequency f."""
-        return n * Z / U_d
-
-    def calculate_power_spectrum_u(
-        self, n: Tensor, u_star: Tensor, f: Tensor
-    ) -> Tensor:
-        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
-        return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
-
-    def calculate_power_spectrum_w(
-        self, n: Tensor, u_star: Tensor, f: Tensor
-    ) -> Tensor:
-        """Calculate vertical fluctuating wind power spectral density S_w(n)."""
-        return (u_star**2 / n) * (6 * f / ((1 + 4 * f) ** 2))
-
+    @staticmethod
     def calculate_coherence(
-        self,
         x_i: Tensor,
         x_j: Tensor,
         y_i: Tensor,
@@ -112,10 +95,13 @@ class TorchWindSimulator:
         C_z: float,
     ) -> Tensor:
         """Calculate spatial correlation function Coh."""
+        # Get device from input tensor
+        device = x_i.device
+        
         # Convert to tensor
-        C_x_t = self._to_tensor(C_x, device=self.device)
-        C_y_t = self._to_tensor(C_y, device=self.device)
-        C_z_t = self._to_tensor(C_z, device=self.device)
+        C_x_t = torch.tensor(C_x, device=device)
+        C_y_t = torch.tensor(C_y, device=device)
+        C_z_t = torch.tensor(C_z, device=device)
         
         # Compute using PyTorch entirely
         distance_term = torch.sqrt(
@@ -128,26 +114,30 @@ class TorchWindSimulator:
         denominator = 2 * torch.pi * (U_zi + U_zj)
         safe_denominator = torch.maximum(
             denominator, 
-            torch.tensor(1e-8, device=self.device)
+            torch.tensor(1e-8, device=device)
         )
 
         return torch.exp(-2 * w * distance_term / safe_denominator)
 
+    @staticmethod
     def calculate_cross_spectrum(
-        self, S_ii: Tensor, S_jj: Tensor, coherence: Tensor
+        S_ii: Tensor, S_jj: Tensor, coherence: Tensor
     ) -> Tensor:
         """Calculate cross-spectral density function S_ij."""
         return torch.sqrt(S_ii * S_jj) * coherence
 
-    def calculate_simulation_frequency(self, N: int, dw: float) -> Tensor:
+    @staticmethod
+    def calculate_simulation_frequency(N: int, dw: float, device=None) -> Tensor:
         """Calculate simulation frequency array."""
-        return torch.arange(1, N + 1, device=self.device) * dw - dw / 2
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch.arange(1, N + 1, device=device) * dw - dw / 2
 
     def build_spectrum_matrix(
-        self, positions: Tensor, wind_speeds: Tensor, frequencies: Tensor, spectrum_func
+        self, positions: Tensor, wind_speeds: Tensor, frequencies: Tensor, component, **kwargs
     ) -> Tensor:
         """
-        Build cross-spectral density matrix S(w) - vectorized implementation.
+        Build cross-spectral density matrix S(w) using the new spectrum interface.
         """
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
@@ -156,77 +146,45 @@ class TorchWindSimulator:
         n = positions.shape[0]
         num_freqs = len(frequencies)
 
-        # Calculate friction velocity at each point
-        u_stars = func.vmap(
-            lambda z: self.calculate_friction_velocity(
-                z,
-                self.params["U_d"],
-                self.params["z_0"],
-                self.params["z_d"],
-                self.params["K"],
+        def _build_spectrum_for_position(freq, positions, component, **kwargs):
+            s_values = self.spectrum.calculate_power_spectrum(
+                freq, positions[:, 2], component, **kwargs
             )
-        )(positions[:, 2])
-
-        # Calculate dimensionless frequency for all frequency points - avoid nested vmap
-        f_values_all = torch.zeros((num_freqs, n), device=self.device)
-        for freq_idx in range(num_freqs):
-            freq = frequencies[freq_idx]
-            f_values_all[freq_idx] = func.vmap(
-                lambda z: self.calculate_f(freq, z, self.params["U_d"])
-            )(positions[:, 2])
-
-        # Calculate power spectral density for all frequency points - avoid nested vmap
-        S_values_all = torch.zeros((num_freqs, n), device=self.device)
-        for freq_idx in range(num_freqs):
-            freq = frequencies[freq_idx]
-            S_values_all[freq_idx] = func.vmap(
-                lambda u_star, f_val: spectrum_func(freq, u_star, f_val)
-            )(u_stars, f_values_all[freq_idx])
-
-        # Create cross-spectral density matrix - fully vectorized implementation
-        S_matrices = torch.zeros(
-            (num_freqs, n, n), device=self.device, dtype=torch.float32
-        )
-
-        # Put auto-spectral densities on diagonal
-        for freq_idx in range(num_freqs):
-            S_matrices[freq_idx].diagonal().copy_(S_values_all[freq_idx])
-
-        # Create grid to compute all point pairs
-        x_i = positions[:, 0].unsqueeze(1).expand(n, n)  # [n, n]
-        x_j = positions[:, 0].unsqueeze(0).expand(n, n)  # [n, n]
-        y_i = positions[:, 1].unsqueeze(1).expand(n, n)  # [n, n]
-        y_j = positions[:, 1].unsqueeze(0).expand(n, n)  # [n, n]
-        z_i = positions[:, 2].unsqueeze(1).expand(n, n)  # [n, n]
-        z_j = positions[:, 2].unsqueeze(0).expand(n, n)  # [n, n]
-        U_i = wind_speeds.unsqueeze(1).expand(n, n)  # [n, n]
-        U_j = wind_speeds.unsqueeze(0).expand(n, n)  # [n, n]
-
-        # Batch compute cross-spectra for each frequency point
-        for freq_idx in range(num_freqs):
-            freq = frequencies[freq_idx]
-
-            coh = self.calculate_coherence(
-                x_i, x_j, y_i, y_j, z_i, z_j, freq,
-                U_i, U_j,
+            s_i = s_values.reshape(n, 1)  # [n, 1]
+            s_j = s_values.reshape(1, n)  # [1, n]
+            
+            # Create grid for spatial coordinates
+            x_i = positions[:, 0].unsqueeze(1).expand(n, n)  # [n, n]
+            x_j = positions[:, 0].unsqueeze(0).expand(n, n)  # [n, n]
+            y_i = positions[:, 1].unsqueeze(1).expand(n, n)  # [n, n]
+            y_j = positions[:, 1].unsqueeze(0).expand(n, n)  # [n, n]
+            z_i = positions[:, 2].unsqueeze(1).expand(n, n)  # [n, n]
+            z_j = positions[:, 2].unsqueeze(0).expand(n, n)  # [n, n]
+            U_i = wind_speeds.unsqueeze(1).expand(n, n)  # [n, n]
+            U_j = wind_speeds.unsqueeze(0).expand(n, n)  # [n, n]
+            
+            coherence = self.calculate_coherence(
+                x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]
             )
-            S_matrices[freq_idx] = self.calculate_cross_spectrum(
-                S_values_all[freq_idx].unsqueeze(1).expand(n, n),  # S_ii
-                S_values_all[freq_idx].unsqueeze(0).expand(n, n),  # S_jj
-                coh
-            )
-
+            cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
+            return cross_spectrum
+        
+        # Compute cross-spectral density matrix for each frequency point
+        S_matrices = torch.stack([
+            _build_spectrum_for_position(freq, positions, component, **kwargs)
+            for freq in frequencies
+        ])
+        
         return S_matrices
-
-    def simulate_wind(self, positions, wind_speeds, direction="u"):
+    def simulate_wind(self, positions, wind_speeds, component="u", **kwargs):
         """
         Simulate fluctuating wind field.
 
         Args:
             positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
             wind_speeds: Array of shape (n,), represents mean wind speed at each point
-            direction: Wind direction, 'u' for along-wind, 'w' for vertical
+            component: Wind component, 'u' for along-wind, 'w' for vertical
 
         Returns:
             wind_samples: Array of shape (n, M), fluctuating wind time series at each point
@@ -234,9 +192,9 @@ class TorchWindSimulator:
         """
         if not isinstance(positions, Tensor):
             positions = torch.from_numpy(positions)
-        return self._simulate_fluctuating_wind(positions, wind_speeds, direction)
+        return self._simulate_fluctuating_wind(positions, wind_speeds, component, **kwargs)
 
-    def _simulate_fluctuating_wind(self, positions, wind_speeds, direction):
+    def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
         """Internal implementation of wind field simulation."""
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
@@ -246,16 +204,11 @@ class TorchWindSimulator:
         M = self._to_tensor(self.params["M"], device=self.device)
         dw = self._to_tensor(self.params["dw"], device=self.device)
 
-        frequencies = self.calculate_simulation_frequency(N, dw)
-        spectrum_func = (
-            self.calculate_power_spectrum_u
-            if direction == "u"
-            else self.calculate_power_spectrum_w
-        )
+        frequencies = self.calculate_simulation_frequency(int(N.item()), float(dw.item()), device=self.device)
 
         # Build cross-spectral density matrix
         S_matrices = self.build_spectrum_matrix(
-            positions, wind_speeds, frequencies, spectrum_func
+            positions, wind_speeds, frequencies, component, **kwargs
         )
 
         # Perform Cholesky decomposition for each frequency point - use vmap instead of loop

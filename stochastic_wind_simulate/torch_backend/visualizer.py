@@ -54,46 +54,6 @@ class TorchWindVisualizer:
         else:
             return torch.tensor(value, device=device)
 
-    def _calculate_theoretical_spectrum(
-        self,
-        Z: float,
-        direction: str = "u",
-    ) -> Tuple[Tensor, Tensor]:
-        # 计算理论谱
-        u_star = self.simulator.calculate_friction_velocity(
-            self._to_tensor(Z, device=self.device),
-            self.params["U_d"],
-            self.params["z_0"],
-            self.params["z_d"],
-            self.params["K"],
-        )
-
-        dw = self.params["dw"]
-        N = self.params["N"]
-
-        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
-
-        f_nondimensional = self.simulator.calculate_f(
-            frequencies,
-            self._to_tensor(Z, device=self.device),
-            self.params["U_d"],
-        )
-
-        S_theory = (
-            self.simulator.calculate_power_spectrum_u(
-                self._to_tensor(frequencies, device=self.device),
-                self._to_tensor(u_star, device=self.device),
-                self._to_tensor(f_nondimensional, device=self.device),
-            )
-            if direction == "u"
-            else self.simulator.calculate_power_spectrum_w(
-                self._to_tensor(frequencies, device=self.device),
-                self._to_tensor(u_star, device=self.device),
-                self._to_tensor(f_nondimensional, device=self.device),
-            )
-        )
-
-        return frequencies, S_theory
 
     def plot_psd(
         self,
@@ -102,7 +62,7 @@ class TorchWindVisualizer:
         show_num: int = 5,
         save_path: Optional[str] = None,
         show: bool = True,
-        direction: str = "u",
+        component: str = "u",
         indices: Optional[Union[int, Tuple[int, int]]] = None,
         **kwargs,
     ):
@@ -115,7 +75,7 @@ class TorchWindVisualizer:
             show_num: 要显示的采样点数量
             save_path: 保存图像的路径，如果不保存则为None
             show: 是否显示图形
-            direction: 风向，'u'表示顺风向，'w'表示竖向
+            component: 风向，'u'表示顺风向，'w'表示竖向
         """
         n = wind_samples.shape[0]
 
@@ -137,9 +97,24 @@ class TorchWindVisualizer:
         ncol = kwargs.get("ncol", 3)
         nrow = (len(indices) + ncol - 1) // ncol
 
-        frequencies_theory, S_theory = func.vmap(
-            self._calculate_theoretical_spectrum, in_dims=(0, None)
-        )(Zs, direction)
+        # frequencies_theory, S_theory = func.vmap(
+        #     self._calculate_theoretical_spectrum, in_dims=(0, None)
+        # )(Zs, component)
+
+        frequencies_theory = self.simulator.calculate_simulation_frequency(
+            self.params["N"], self.params["dw"]
+        ).to(self.device)
+        S_theory = func.vmap(
+            self.simulator.spectrum.calculate_power_spectrum,
+            in_dims=(0, None, None),
+        )(
+            frequencies_theory,
+            Zs.to(self.device),
+            component,
+        )
+
+
+
         frequencies_theory = frequencies_theory.cpu().numpy()
         S_theory = S_theory.cpu().numpy()
 
@@ -160,8 +135,8 @@ class TorchWindVisualizer:
 
             # 绘制理论谱线
             ax.loglog(
-                frequencies_theory[i],
-                S_theory[i],
+                frequencies_theory,
+                S_theory[:, i],
                 "--",
                 color="black",
                 linewidth=2,
@@ -171,7 +146,7 @@ class TorchWindVisualizer:
             ax.set(
                 xlabel="Frequency (Hz)",
                 ylabel="Power Spectral Density (m²/s²)",
-                title=f"PSD of {direction.upper()} Wind at Z={Zs[i].item():.2f} m (Point {i+1})",
+                title=f"PSD of {component.upper()} Wind at Z={Zs[i].item():.2f} m (Point {i+1})",
             )
 
             ax.grid(True, which="both", ls="-", alpha=0.6)
@@ -235,7 +210,7 @@ class TorchWindVisualizer:
         wind_speeds: np.ndarray,
         save_path: Optional[str] = None,
         show: bool = True,
-        direction: str = "u",
+        component: str = "u",
         indices: Optional[Union[int, Tuple[int, int]]] = None,
         downsample: int = 1,
         **kwargs,
@@ -249,7 +224,7 @@ class TorchWindVisualizer:
             wind_speeds: 平均风速，形状为 (n_points,)
             save_path: 保存图像的路径，如果不保存则为None
             show: 是否显示图形
-            direction: 风向，'u'表示顺风向，'w'表示竖向
+            component: 风向，'u'表示顺风向，'w'表示竖向
             indices: 要计算互相关的两个点的索引，为None时随机选择
             downsample: 降采样因子，用于加快计算
             **kwargs: 额外参数
@@ -296,90 +271,15 @@ class TorchWindVisualizer:
         M = self.params["M"]
         dw = self.params["dw"]
 
-        # 计算频率
-        frequencies = self.simulator.calculate_simulation_frequency(N, dw).cpu().numpy()
-        frequencies_tensor = self._to_tensor(frequencies, device=self.device)
+        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
+        S_ii = self.simulator.spectrum.calculate_power_spectrum(
+            frequencies, self._to_tensor(z_i, device=self.device), component
+        ).cpu().numpy()
+        S_jj = self.simulator.spectrum.calculate_power_spectrum(
+            frequencies, self._to_tensor(z_j, device=self.device), component
+        ).cpu().numpy()
+        frequencies = frequencies.cpu().numpy()
 
-        # 根据风向选择谱函数
-        spectrum_func = (
-            self.simulator.calculate_power_spectrum_u
-            if direction == "u"
-            else self.simulator.calculate_power_spectrum_w
-        )
-
-        # 计算摩擦速度
-        u_star_i = (
-            self.simulator.calculate_friction_velocity(
-                self._to_tensor(z_i, device=self.device),
-                self.params["U_d"],
-                self.params["z_0"],
-                self.params["z_d"],
-                self.params["K"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        u_star_j = (
-            self.simulator.calculate_friction_velocity(
-                self._to_tensor(z_j, device=self.device),
-                self.params["U_d"],
-                self.params["z_0"],
-                self.params["z_d"],
-                self.params["K"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        # 计算无量纲频率
-        f_i = (
-            self.simulator.calculate_f(
-                frequencies_tensor,
-                self._to_tensor(z_i, device=self.device),
-                self.params["U_d"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        f_j = (
-            self.simulator.calculate_f(
-                frequencies_tensor,
-                self._to_tensor(z_j, device=self.device),
-                self.params["U_d"],
-            )
-            .cpu()
-            .numpy()
-        )
-
-        # 计算自功率谱
-        S_ii_list = []
-        S_jj_list = []
-
-        for idx, freq in enumerate(frequencies):
-            S_ii_list.append(
-                spectrum_func(
-                    self._to_tensor(freq, device=self.device),
-                    self._to_tensor(u_star_i, device=self.device),
-                    self._to_tensor(f_i[idx], device=self.device),
-                )
-                .cpu()
-                .numpy()
-            )
-
-            S_jj_list.append(
-                spectrum_func(
-                    self._to_tensor(freq, device=self.device),
-                    self._to_tensor(u_star_j, device=self.device),
-                    self._to_tensor(f_j[idx], device=self.device),
-                )
-                .cpu()
-                .numpy()
-            )
-
-        S_ii = np.array(S_ii_list)
-        S_jj = np.array(S_jj_list)
 
         # 计算相干函数
         coherence_list = []
@@ -448,7 +348,7 @@ class TorchWindVisualizer:
         )
 
         plt.title(
-            f"Cross Correlation of {direction.upper()} Wind at Points {i+1} and {j+1}\n"
+            f"Cross Correlation of {component.upper()} Wind at Points {i+1} and {j+1}\n"
         )
         plt.xlabel("Time Lag (s)")
         plt.ylabel("Cross Correlation")

@@ -28,7 +28,7 @@ def main():
     args = arg_parser.parse_args()
     backend = args.backend
     logging.info(f"Using backend: {backend}")
-    simulator = get_simulator(backend=backend, key=42, spectrum_type="teunissen-nd")
+    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
 
     # Update simulator parameters
     simulator.update_parameters(
@@ -79,7 +79,6 @@ def main():
         jnp.save("samples_jax.npy", samples)
     elif backend == "torch":
         import torch
-        samples = samples.detach().cpu().numpy()
         np.save("samples_torch.npy", samples)
     elif backend == "numpy":
         np.save("samples_numpy.npy", samples)

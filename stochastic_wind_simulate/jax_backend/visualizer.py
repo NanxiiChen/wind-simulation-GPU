@@ -124,34 +124,6 @@ class JaxWindVisualizer:
         theo_max = jnp.max(jnp.abs(theo_correlation))
         return theo_correlation / (theo_max if theo_max > 0 else 1.0)
 
-    def _calculate_theoretical_spectrum(
-        self, Z: float, component: str = "u"
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """计算理论功率谱密度"""
-        
-        u_star = self.simulator.calculate_friction_velocity(
-            Z,
-            self.simulator.params["U_d"],
-            self.simulator.params["z_0"],
-            self.simulator.params["z_d"],
-            self.simulator.params["K"],
-        )
-        dw = self.simulator.params["dw"]
-        N = self.simulator.params["N"]
-        frequencies = self.simulator.calculate_simulation_frequency(N, dw)
-        f_nondimensional = self.simulator.calculate_f(
-            frequencies, Z, self.simulator.params["U_d"]
-        )
-        S_theory = (
-            self.simulator.calculate_power_spectrum_u(
-                frequencies, u_star, f_nondimensional
-            )
-            if component == "u"
-            else self.simulator.calculate_power_spectrum_w(
-                frequencies, u_star, f_nondimensional
-            )
-        )
-        return frequencies, S_theory
 
     def plot_cross_correlation(
         self,
