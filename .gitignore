@@ -1,4 +1,4 @@
-*.pdf
+./*.pdf
 *.pt
 demo.ipynb
 *.npy
