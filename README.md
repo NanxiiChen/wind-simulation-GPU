@@ -21,6 +21,7 @@ Key features include:
 
 ![Power Spectral Density](./img/wsamples-psd.png)
 ![Cross-Correlation](./img/samples-cor.png)
+![Measured vs Simulated PSD](./img/bridge_wind_spectrum.png)
 
 
 ## Performance Comparison
