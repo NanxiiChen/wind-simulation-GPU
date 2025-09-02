@@ -321,7 +321,8 @@ class JaxWindVisualizer:
         else:
             plt.close()
 
-        return indices
+        if kwargs.get("return_data", False):
+            return plot_lag_times, plot_corr, theo_plot_times, theo_plot
         
     # def plot_cross_coherence(
     #     self,
