@@ -4,6 +4,10 @@ demo.ipynb
 *.npy
 *.txt
 .vscode/
+*.csv
+*.zip
+./data/data7s(1)/
+*.xlsx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

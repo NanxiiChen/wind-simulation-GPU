@@ -29,6 +29,8 @@ class WindSpectrum:
             "T": 600,  # Simulation duration (s)
             "dt": 0.1,  # Time step (s)
             "U_d": 25.0,  # Design basic wind speed (m/s)
+            "z_max": 450.0,  # Maximum gradient wind height (m)
+            "L_u": 200.0,  # Integral length scale for u
         }
         params["z_d"] = (
             params["H_bar"] - params["z_0"] / params["K"]
@@ -51,6 +53,8 @@ class WindSpectrum:
     
     def calculate_mean_wind_speed(self, Z, U_d, alpha_0):
         """Calculate mean wind speed at height Z."""
+        z_max = self.params.get("z_max", 450.0)
+        Z = jnp.minimum(Z, z_max)
         return U_d * (Z / 10) ** alpha_0
     
 

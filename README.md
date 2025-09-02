@@ -18,10 +18,17 @@ Key features include:
 
 ## Representative Results
 
-
+### Benchmarks
 ![Power Spectral Density](./img/wsamples-psd.png)
 ![Cross-Correlation](./img/samples-cor.png)
+
+### Application to Engineering Problems
+
+#### Long-span Bridge
 ![Measured vs Simulated PSD](./img/bridge_wind_spectrum.png)
+
+#### High-rise Building
+![Building Wind Simulation](./img/high_rise_building_wind_spectrum.png)
 
 
 ## Performance Comparison
