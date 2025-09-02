@@ -22,6 +22,18 @@ Key features include:
 ![Power Spectral Density](./img/wsamples-psd.png)
 ![Cross-Correlation](./img/samples-cor.png)
 
+
+### Performance Comparison
+
+Time comparison of wind field simulation using JAX, PyTorch, and NumPy implementations. The results demonstrate the significant performance advantage of GPU-accelerated methods over traditional CPU-based approaches.
+
+![time_comparison](./img/time_cost_comparison.png)
+<!-- 
+| Num_samples | JAX (s) | PyTorch (s) | CPU (s) |
+|-------------|---------|-------------|---------|
+| 100        | 1.32    | 1.56        | 7200+  | -->
+
+
 ### Application to Engineering Problems
 
 #### Long-span Bridge
@@ -31,15 +43,7 @@ Key features include:
 ![Building Wind Simulation](./img/high_rise_building_wind_spectrum.png)
 
 
-## Performance Comparison
 
-Time comparison of wind field simulation using JAX, PyTorch, and NumPy implementations. The results demonstrate the significant performance advantage of GPU-accelerated methods over traditional CPU-based approaches.
-
-![time_comparison](./img/time_cost_comparison.png)
-<!-- 
-| Num_samples | JAX (s) | PyTorch (s) | CPU (s) |
-|-------------|---------|-------------|---------|
-| 100        | 1.32    | 1.56        | 7200+  | -->
 
 
 ## Installation
