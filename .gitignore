@@ -8,6 +8,7 @@ demo.ipynb
 *.zip
 ./data/data7s(1)/
 *.xlsx
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
