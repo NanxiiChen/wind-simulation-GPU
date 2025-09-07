@@ -37,12 +37,16 @@ Time comparison of wind field simulation using JAX, PyTorch, and NumPy implement
 ### Application to Engineering Problems
 
 #### Long-span Bridge
-![Measured vs Simulated PSD](./img/bridge_wind_spectrum.png)
+<!-- ![Measured vs Simulated PSD](./img/bridge_wind_spectrum.png) -->
+<img src="./img/bridge_wind_spectrum.png" alt="Bridge Wind Simulation" width="600"/>
 
 #### High-rise Building
-![Building Wind Simulation](./img/high_rise_building_wind_spectrum.png)
+<!-- ![Building Wind Simulation](./img/high_rise_building_wind_spectrum.png) -->
+<img src="./img/high_rise_building_wind_spectrum.png" alt="High-rise Building Wind Simulation" width="600"/>
 
-
+#### Offshore Wind Turbine
+<!-- ![Offshore Wind Turbine](./img/offshore_wind_simulation.png) -->
+<img src="./img/offshore_wind_simulation.png" alt="Offshore Wind Turbine Simulation" width="600"/>
 
 
 

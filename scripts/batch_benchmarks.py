@@ -34,11 +34,10 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     
     # Use smaller parameters for faster benchmarking
     simulator.update_parameters(
-        N=1500,     # Reduced frequency points
-        M=3000,     # Reduced time points  
-        T=300,      # Reduced duration
-        dt=0.2,     # Larger time step
-        w_up=4.0    # Reduced cutoff frequency
+        N=3000,     # Reduced frequency points
+        M=6000,     # Reduced time points  
+        T=600,      # Reduced duration
+        w_up=1.0    # Reduced cutoff frequency
     )
     
     time_costs = []
@@ -245,7 +244,7 @@ def main():
         "--test-sizes",
         type=int,
         nargs="+",
-        default=[10, 25, 50, 100, 200, 350, 500],
+        default=[10, 25, 50, 100, 200, 350, 500, 750, 1000],
         help="Test sample sizes (default: [10, 25, 50, 100, 200, 350, 500])",
     )
     arg_parser.add_argument(
