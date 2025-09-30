@@ -1,0 +1,10 @@
+n_samples,time_cost(s),memory_estimate(GB),used_batching,point_batch_size,freq_batch_size
+10,0.7807,0.0076,False,None,None
+25,0.6317,0.0441,False,None,None
+50,0.6166,0.1721,False,None,None
+100,0.6482,0.6795,False,None,None
+200,0.9442,2.7001,True,200,1500
+350,1.5963,8.2456,True,350,375
+500,2.5206,16.8085,True,250,375
+750,2.7994,37.7856,True,375,375
+1000,4.2296,67.1446,True,250,375

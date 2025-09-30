@@ -2,7 +2,7 @@
 *.pt
 demo.ipynb
 *.npy
-*.txt
+./*.txt
 .vscode/
 *.csv
 *.zip
