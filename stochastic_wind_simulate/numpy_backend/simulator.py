@@ -105,14 +105,14 @@ class NumpyWindSimulator(BaseWindSimulator):
             s_j = s_values.reshape(1, n)  # [1, n]
             
             # Create grid coordinates
-            x_i = positions[:, 0][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-            x_j = positions[:, 0][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-            y_i = positions[:, 1][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-            y_j = positions[:, 1][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-            z_i = positions[:, 2][:, np.newaxis].repeat(n, axis=1)  # [n, n]
-            z_j = positions[:, 2][np.newaxis, :].repeat(n, axis=0)  # [n, n]
-            U_i = wind_speeds[:, np.newaxis].repeat(n, axis=1)  # [n, n]
-            U_j = wind_speeds[np.newaxis, :].repeat(n, axis=0)  # [n, n]
+            x_i = positions[:, 0].reshape(n, 1)  # [n, 1]
+            x_j = positions[:, 0].reshape(1, n)  # [1, n]
+            y_i = positions[:, 1].reshape(n, 1)  # [n, 1]
+            y_j = positions[:, 1].reshape(1, n)  # [1, n]
+            z_i = positions[:, 2].reshape(n, 1)  # [n, 1]
+            z_j = positions[:, 2].reshape(1, n)  # [1, n]
+            U_i = wind_speeds.reshape(n, 1)  # [n, 1]
+            U_j = wind_speeds.reshape(1, n)  # [1, n]
             
             coherence = self.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,

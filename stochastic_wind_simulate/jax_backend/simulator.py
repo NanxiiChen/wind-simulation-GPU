@@ -192,15 +192,15 @@ class JaxWindSimulator(BaseWindSimulator):
         """
         n = positions.shape[0]
 
-        x_i = jnp.expand_dims(positions[:, 0], 1).repeat(n, axis=1)  # [n, n]
-        x_j = jnp.expand_dims(positions[:, 0], 0).repeat(n, axis=0)  # [n, n]
-        y_i = jnp.expand_dims(positions[:, 1], 1).repeat(n, axis=1)  # [n, n]
-        y_j = jnp.expand_dims(positions[:, 1], 0).repeat(n, axis=0)  # [n, n]
-        z_i = jnp.expand_dims(positions[:, 2], 1).repeat(n, axis=1)  # [n, n]
-        z_j = jnp.expand_dims(positions[:, 2], 0).repeat(n, axis=0)  # [n, n]
+        x_i = positions[:, 0].reshape(n, 1)  # [n, 1]
+        x_j = positions[:, 0].reshape(1, n)  # [1, n]
+        y_i = positions[:, 1].reshape(n, 1)  # [n, 1]
+        y_j = positions[:, 1].reshape(1, n)  # [1, n]
+        z_i = positions[:, 2].reshape(n, 1)  # [n, 1]
+        z_j = positions[:, 2].reshape(1, n)  # [1, n]
 
-        U_i = jnp.expand_dims(wind_speeds, 1).repeat(n, axis=1)  # [n, n]
-        U_j = jnp.expand_dims(wind_speeds, 0).repeat(n, axis=0)  # [n, n]
+        U_i = wind_speeds.reshape(n, 1)  # [n, 1]
+        U_j = wind_speeds.reshape(1, n)  # [1, n]
 
         @partial(jit, static_argnums=(2,))
         def _build_spectrum_for_position(freq, positions, component, **kwargs):
