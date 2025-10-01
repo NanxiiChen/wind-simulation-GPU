@@ -313,8 +313,6 @@ class TorchWindVisualizer:
         # 计算相干函数
         coherence_list = []
         for freq in frequencies:
-            # 使用角频率
-            ang_freq = 2 * np.pi * freq
             coh = (
                 self.simulator.calculate_coherence(
                     x_i,
@@ -323,7 +321,7 @@ class TorchWindVisualizer:
                     y_j,
                     z_i,
                     z_j,
-                    self._to_tensor(ang_freq, device=self.device),
+                    self._to_tensor(freq, device=self.device),
                     U_zi,
                     U_zj,
                     self.params["C_x"],

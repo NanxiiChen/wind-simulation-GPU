@@ -72,7 +72,7 @@ def main():
 
     visualizer = get_visualizer(backend=backend, key=42, simulator=simulator)
     visualizer.plot_psd(samples, positions[:, -1], show_num=6, show=True, component="u")
-    visualizer.plot_cross_correlation(samples, positions, wind_speeds, show=True, component="u", indices=(1, 10))
+    visualizer.plot_cross_correlation(samples, positions, wind_speeds, show=True, component="u", indices=(1, 5))
 
     if backend == "jax":
         import jax.numpy as jnp

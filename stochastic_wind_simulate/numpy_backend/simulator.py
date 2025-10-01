@@ -69,7 +69,7 @@ class NumpyWindSimulator(BaseWindSimulator):
         self.spectrum.params = self.params  # Update spectrum parameters
 
     @staticmethod
-    def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
+    def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_zi, U_zj, C_x, C_y, C_z):
         """Calculate spatial correlation function Coh."""
         distance_term = np.sqrt(
             C_x**2 * (x_i - x_j) ** 2
@@ -77,10 +77,10 @@ class NumpyWindSimulator(BaseWindSimulator):
             + C_z**2 * (z_i - z_j) ** 2
         )
         # Add numerical stability protection to avoid division by near-zero values
-        denominator = 2 * np.pi * (U_zi + U_zj)
+        denominator = U_zi + U_zj
         safe_denominator = np.maximum(denominator, 1e-8)  # Set safe minimum value
 
-        return np.exp(-2 * w * distance_term / safe_denominator)
+        return np.exp(-2 * freq * distance_term / safe_denominator)
 
     @staticmethod
     def calculate_cross_spectrum(S_ii, S_jj, coherence):

@@ -115,7 +115,7 @@ class JaxWindSimulator(BaseWindSimulator):
 
     @staticmethod
     @jit
-    def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, w, U_zi, U_zj, C_x, C_y, C_z):
+    def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_zi, U_zj, C_x, C_y, C_z):
         """
         Calculate spatial coherence function for wind field correlation.
         
@@ -123,7 +123,7 @@ class JaxWindSimulator(BaseWindSimulator):
             x_i, x_j: X-coordinates of points i and j
             y_i, y_j: Y-coordinates of points i and j  
             z_i, z_j: Z-coordinates of points i and j
-            w: Frequency (rad/s)
+            freq: Frequency (1/s)
             U_zi, U_zj: Wind speeds at points i and j
             C_x, C_y, C_z: Decay coefficients in x, y, z directions
             
@@ -136,10 +136,11 @@ class JaxWindSimulator(BaseWindSimulator):
             + C_z**2 * (z_i - z_j) ** 2
         )
         # Add numerical stability protection to avoid division by near-zero values
-        denominator = 2 * jnp.pi * (U_zi + U_zj)
+        # denominator = 2 * jnp.pi * (U_zi + U_zj)
+        denominator = U_zi + U_zj
         safe_denominator = jnp.maximum(denominator, 1e-8)  # Set safe minimum value
 
-        return jnp.exp(-2 * w * distance_term / safe_denominator)
+        return jnp.exp(-2 * freq * distance_term / safe_denominator)
 
     @staticmethod
     @jit
@@ -203,7 +204,7 @@ class JaxWindSimulator(BaseWindSimulator):
             s_values = self.spectrum.calculate_power_spectrum(
                 freq, positions[:, 2], component, **kwargs
             )
-            s_i, s_j = S = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
+            s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
             coherence = self.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]

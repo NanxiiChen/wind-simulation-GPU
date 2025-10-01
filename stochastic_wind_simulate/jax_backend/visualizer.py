@@ -261,7 +261,7 @@ class JaxWindVisualizer:
                 y_j,
                 z_i,
                 z_j,
-                2 * jnp.pi * freq,  # 使用角频率
+                freq,
                 U_zi,
                 U_zj,
                 self.simulator.params["C_x"],

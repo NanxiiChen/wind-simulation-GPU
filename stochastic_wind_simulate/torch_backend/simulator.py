@@ -105,7 +105,7 @@ class TorchWindSimulator(BaseWindSimulator):
         y_j: Tensor,
         z_i: Tensor,
         z_j: Tensor,
-        w: Tensor,
+        freq: Tensor,
         U_zi: Tensor,
         U_zj: Tensor,
         C_x: float,
@@ -128,14 +128,13 @@ class TorchWindSimulator(BaseWindSimulator):
             + C_z_t**2 * (z_i - z_j) ** 2
         )
 
-        # Use PyTorch π constant
-        denominator = 2 * torch.pi * (U_zi + U_zj)
+        denominator = U_zi + U_zj
         safe_denominator = torch.maximum(
             denominator, 
             torch.tensor(1e-8, device=device)
         )
 
-        return torch.exp(-2 * w * distance_term / safe_denominator)
+        return torch.exp(-2 * freq * distance_term / safe_denominator)
 
     @staticmethod
     def calculate_cross_spectrum(

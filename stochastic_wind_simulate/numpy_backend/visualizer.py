@@ -225,7 +225,7 @@ class NumpyWindVisualizer:
         coherence = np.array([
             self.simulator.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j,
-                2 * np.pi * freq,  # 使用角频率
+                freq,
                 U_zi, U_zj,
                 self.simulator.params["C_x"],
                 self.simulator.params["C_y"],
