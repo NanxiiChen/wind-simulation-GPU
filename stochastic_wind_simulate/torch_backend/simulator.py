@@ -168,19 +168,14 @@ class TorchWindSimulator(BaseWindSimulator):
             s_values = self.spectrum.calculate_power_spectrum(
                 freq, positions[:, 2], component, **kwargs
             )
-            s_i = s_values.reshape(n, 1)  # [n, 1]
-            s_j = s_values.reshape(1, n)  # [1, n]
-            
+            s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
+
             # Create grid for spatial coordinates
-            x_i = positions[:, 0].reshape(n, 1)  # [n, 1]
-            x_j = positions[:, 0].reshape(1, n)  # [1, n]
-            y_i = positions[:, 1].reshape(n, 1)  # [n, 1]
-            y_j = positions[:, 1].reshape(1, n)  # [1, n]
-            z_i = positions[:, 2].reshape(n, 1)  # [n, 1]
-            z_j = positions[:, 2].reshape(1, n)  # [1, n]
-            U_i = wind_speeds.reshape(n, 1)  # [n, 1]
-            U_j = wind_speeds.reshape(1, n)  # [1, n]
-            
+            x_i, x_j = positions[:, 0:1], positions[:, 0:1].T  # [n, 1], [1, n]
+            y_i, y_j = positions[:, 1:2], positions[:, 1:2].T  # [n, 1], [1, n]
+            z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # [n, 1], [1, n]
+            U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # [n, 1], [1, n]
+
             coherence = self.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]
