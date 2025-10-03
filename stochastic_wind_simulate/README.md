@@ -60,8 +60,8 @@ $$
 其中
 $$
 B_j(w_l) = \begin{cases}
-    \sum_{m=1}^{j} H_{jm}(w_l)\exp(i\phi_{ml})  & 0\leq l < n \\
-    0 & n \leq l < M
+    \sum_{m=1}^{j} H_{jm}(w_l)\exp(i\phi_{ml})  & 0\leq l < N \\
+    0 & N \leq l < M
 \end{cases}\\
 w_l = (l-0.5)\Delta w, (l=1, 2, \ldots, N)\\
 \Delta t \leq \frac{\pi}{w_{up}}
