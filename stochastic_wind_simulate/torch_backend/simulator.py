@@ -351,6 +351,8 @@ class TorchWindSimulator(BaseWindSimulator):
                 S + torch.eye(n, device=self.device) * 1e-12
             )
         H_matrices = func.vmap(cholesky_with_reg)(S_matrices)  # (N, n, n)
+        # enfore lower triangular
+        H_matrices = torch.tril(H_matrices)
 
         # Generate random phases - reproducible
         torch.manual_seed(self.seed)

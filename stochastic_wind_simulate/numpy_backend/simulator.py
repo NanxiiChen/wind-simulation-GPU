@@ -283,6 +283,7 @@ class NumpyWindSimulator(BaseWindSimulator):
             cholesky(S_matrices[i] + np.eye(n) * 1e-12, lower=True)
             for i in range(N)
         ])  # (N, n, n)
+        H_matrices = np.tril(H_matrices)  # Ensure lower triangular
 
         # Generate random phases and prepare batched mat-vec via einsum
         phi = np.random.uniform(0, 2*np.pi, (n, N))                 # (n, N)

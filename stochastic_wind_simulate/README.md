@@ -66,6 +66,8 @@ B_j(w_l) = \begin{cases}
 w_l = (l-0.5)\Delta w, (l=1, 2, \ldots, N)\\
 \Delta t \leq \frac{\pi}{w_{up}}
 $$
+
+
 其中
 - $n$ 为待模拟的点的个数；
 - $N$ 为充分大的正整数，代表频率的分段数目，取值越大，模拟精度越高；

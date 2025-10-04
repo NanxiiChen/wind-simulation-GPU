@@ -441,7 +441,7 @@ class JaxWindSimulator(BaseWindSimulator):
             return cholesky(S + jnp.eye(n) * 1e-12, lower=True)
 
         H_matrices = vmap(cholesky_with_reg)(S_matrices)   # (N, n, n)
-        H_matrices = jnp.tril(H_matrices)                  # Ensure lower triangular
+        H_matrices = jnp.tril(H_matrices)
 
         # Generate random phases
         key, subkey = random.split(key)
