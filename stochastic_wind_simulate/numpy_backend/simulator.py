@@ -199,53 +199,8 @@ class NumpyWindSimulator(BaseWindSimulator):
             positions, wind_speeds, frequencies, component, **kwargs
         )
 
-        # Perform Cholesky decomposition for each frequency point
-        H_matrices = np.zeros((N, n, n), dtype=np.complex128)
-        for i in range(N):
-            # Add small diagonal terms to improve numerical stability
-            S_reg = S_matrices[i] + np.eye(n) * 1e-12
-            H_matrices[i] = cholesky(S_reg, lower=True)
-
-        # Generate random phases - same as JAX version
-        phi = np.random.uniform(0, 2*np.pi, (n, N))
-
-        # Calculate B matrix - corrected version, consistent with JAX version
-        B = np.zeros((n, M), dtype=np.complex128)
-
-        for j in range(n):
-            # Create mask matrix where mask[m] = True if m <= j
-            m_indices = np.arange(n)  # [n,]
-            mask = m_indices <= j  # [n,] boolean mask
-            
-            # H_matrices[l, j, m] for all frequencies l of H_{jm}
-            H_jm_all = H_matrices[:, j, :]  # [N, n]
-            
-            # phi[m, l] -> phi.T to get [N, n]
-            phi_transposed = phi.T  # [N, n]
-            
-            # Calculate exp(i * phi_{ml})
-            exp_terms = np.exp(1j * phi_transposed)  # [N, n]
-            
-            # Apply mask and sum
-            # Broadcast mask to [N, n] shape
-            mask_expanded = np.broadcast_to(mask, (N, n))  # [N, n]
-            masked_terms = np.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
-            B_values = np.sum(masked_terms, axis=1)  # [N,]
-            
-            # Put B_values into the first N positions of B matrix, remaining positions stay 0
-            B[j, :N] = B_values
-        
-        # FFT transform
-        G = np.fft.ifft(B) * M
-        
-        # Calculate wind field samples
-        wind_samples = np.zeros((n, M))
-        p_indices = np.arange(M)
-        exp_factor = np.exp(1j * (p_indices * np.pi / M))
-        
-        for j in range(n):
-            wind_samples[j] = np.sqrt(2 * dw) * np.real(G[j] * exp_factor)
-        
+        # Use shared processing to avoid duplication
+        wind_samples = self._process_spectrum_to_samples(S_matrices, n, N, M, dw)
         return wind_samples, frequencies
 
     def _simulate_wind_with_batching(self, positions, wind_speeds, component,
@@ -318,53 +273,34 @@ class NumpyWindSimulator(BaseWindSimulator):
     
     def _process_spectrum_to_samples(self, S_matrices, n, N, M, dw):
         """Process spectrum matrices to wind samples (extracted from main simulation)."""
-        # Perform Cholesky decomposition for each frequency point
-        H_matrices = np.zeros((N, n, n), dtype=np.complex128)
-        for i in range(N):
-            # Add small diagonal terms to improve numerical stability
-            S_reg = S_matrices[i] + np.eye(n) * 1e-12
-            H_matrices[i] = cholesky(S_reg, lower=True)
+        # Perform Cholesky decomposition for each frequency point (real lower-triangular)
+        # H_matrices = np.zeros((N, n, n), dtype=np.float64)
+        # for i in range(N):
+        #     S_reg = S_matrices[i] + np.eye(n) * 1e-12  # stability
+        #     H_matrices[i] = cholesky(S_reg, lower=True)
 
-        # Generate random phases - use current random state for consistency
-        phi = np.random.uniform(0, 2*np.pi, (n, N))
+        H_matrices = np.array([
+            cholesky(S_matrices[i] + np.eye(n) * 1e-12, lower=True)
+            for i in range(N)
+        ])  # (N, n, n)
 
-        # Calculate B matrix - consistent with other backends
+        # Generate random phases and prepare batched mat-vec via einsum
+        phi = np.random.uniform(0, 2*np.pi, (n, N))                 # (n, N)
+        exp_terms = np.exp(1j * phi.T)                              # (N, n)
+        Hc = H_matrices.astype(np.complex128)                       # (N, n, n)
+        B_freq = np.einsum('lnm,ln->lm', Hc, exp_terms)             # (N, n)
+
+        # Assemble B (n, M): first N columns are B_freq^T, remaining zeros
         B = np.zeros((n, M), dtype=np.complex128)
+        B[:, :N] = B_freq.T                                         # (n, N)
 
-        for j in range(n):
-            # Create mask matrix where mask[m] = True if m <= j
-            m_indices = np.arange(n)  # [n,]
-            mask = m_indices <= j  # [n,] boolean mask
-            
-            # H_matrices[l, j, m] for all frequencies l of H_{jm}
-            H_jm_all = H_matrices[:, j, :]  # [N, n]
-            
-            # phi[m, l] -> phi.T to get [N, n]
-            phi_transposed = phi.T  # [N, n]
-            
-            # Calculate exp(i * phi_{ml})
-            exp_terms = np.exp(1j * phi_transposed)  # [N, n]
-            
-            # Apply mask and sum
-            # Broadcast mask to [N, n] shape
-            mask_expanded = np.broadcast_to(mask, (N, n))  # [N, n]
-            masked_terms = np.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
-            B_values = np.sum(masked_terms, axis=1)  # [N,]
-            
-            # Put B_values into the first N positions of B matrix, remaining positions stay 0
-            B[j, :N] = B_values
-        
-        # FFT transform
-        G = np.fft.ifft(B, axis=1) * M
-        
-        # Calculate wind field samples
-        wind_samples = np.zeros((n, M))
+        # FFT along time axis
+        G = np.fft.ifft(B, axis=1) * M                              # (n, M)
+
+        # Wind samples (vectorized)
         p_indices = np.arange(M)
-        exp_factor = np.exp(1j * (p_indices * np.pi / M))
-        
-        for j in range(n):
-            wind_samples[j] = np.sqrt(2 * dw) * np.real(G[j] * exp_factor)
-        
+        exponent = np.exp(1j * (p_indices * np.pi / M))             # (M,)
+        wind_samples = np.sqrt(2 * dw) * np.real(G * exponent[None, :])
         return wind_samples
 
     def estimate_memory_requirement(self, n_points, n_frequencies):

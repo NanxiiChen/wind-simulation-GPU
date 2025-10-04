@@ -39,9 +39,9 @@ class BaseWindSimulator(ABC):
             Estimated memory requirement in GB
         """
         # Main matrices: S_matrices (n_freq, n, n), H_matrices (n_freq, n, n), B (n, M)
-        # Complex matrices use 2x memory, assuming 32-bit floats (4 bytes)
-        dtype_size = 4
-        
+        # Complex matrices use 2x memory, assuming 64-bit floats (8 bytes)
+        dtype_size = 8
+
         S_memory = n_frequencies * n_points * n_points * dtype_size  # Real
         H_memory = n_frequencies * n_points * n_points * dtype_size * 2  # Complex
         B_memory = n_points * (n_frequencies * 2) * dtype_size * 2  # Complex, M = 2*N

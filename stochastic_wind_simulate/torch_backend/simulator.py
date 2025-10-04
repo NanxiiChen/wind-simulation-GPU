@@ -262,60 +262,12 @@ class TorchWindSimulator(BaseWindSimulator):
             positions, wind_speeds, frequencies, component, **kwargs
         )
 
-        # Perform Cholesky decomposition for each frequency point - use vmap instead of loop
-        def cholesky_with_reg(S):
-            return torch.linalg.cholesky(
-                S + torch.eye(n, device=self.device) * 1e-12
-            )
-
-
-        H_matrices = func.vmap(cholesky_with_reg)(S_matrices)
-
-        # Modify B matrix computation in _simulate_fluctuating_wind method
+        # Use shared processing to avoid duplication
         N_int = int(N.item()) if isinstance(N, torch.Tensor) else int(N)
         M_int = int(M.item()) if isinstance(M, torch.Tensor) else int(M)
+        wind_samples_t = self._process_spectrum_to_samples(S_matrices, n, N_int, M_int, dw)
 
-        # Generate random phases
-        torch.manual_seed(self.seed)  # Ensure reproducibility
-        phi = torch.rand((n, N_int), device=self.device) * 2 * torch.pi
-
-        # Initialize B matrix
-        B = torch.zeros((n, M_int), dtype=torch.complex64, device=self.device)
-
-        # Calculate B matrix - corrected version, consistent with JAX version
-        for j in range(n):
-            # Create mask matrix where mask[m] = True if m <= j
-            m_indices = torch.arange(n, device=self.device)  # [n,]
-            mask = m_indices <= j  # [n,] boolean mask
-            
-            # H_matrices[l, j, m] for all frequencies l of H_{jm}
-            H_jm_all = H_matrices[:, j, :]  # [N, n]
-            
-            # phi[m, l] -> phi.T to get [N, n]
-            phi_transposed = phi.t()  # [N, n]
-            
-            # Calculate exp(i * phi_{ml})
-            exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
-            
-            # Apply mask and sum
-            # Broadcast mask to [N, n] shape
-            mask_expanded = mask.unsqueeze(0).expand(N_int, -1)  # [N, n]
-            masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
-            B_values = torch.sum(masked_terms, dim=1)  # [N,]
-            
-            # Put B_values into the first N positions of B matrix, remaining positions stay 0
-            B[j, :N_int] = B_values
-
-        # Compute FFT
-        G = torch.fft.ifft(B, dim=1) * M_int
-
-        # Compute wind field samples - can keep vectorized
-        p_indices = torch.arange(M, device=self.device)
-        exponent = torch.exp(1j * (p_indices * torch.pi / M))
-        wind_samples = torch.sqrt(2 * dw) * (G * exponent.unsqueeze(0)).real
-
-        # Convert to NumPy array to ensure consistent output with JAX version
-        return wind_samples.cpu().numpy(), frequencies.cpu().numpy()
+        return wind_samples_t.cpu().numpy(), frequencies.cpu().numpy()
 
     def _simulate_wind_with_batching(self, positions, wind_speeds, component,
                                    point_batch_size, freq_batch_size, **kwargs):
@@ -393,52 +345,33 @@ class TorchWindSimulator(BaseWindSimulator):
     
     def _process_spectrum_to_samples(self, S_matrices, n, N, M, dw):
         """Process spectrum matrices to wind samples (extracted from main simulation)."""
-        # Perform Cholesky decomposition for each frequency point
+        # Perform Cholesky decomposition for each frequency point (vectorized)
         def cholesky_with_reg(S):
             return torch.linalg.cholesky(
                 S + torch.eye(n, device=self.device) * 1e-12
             )
+        H_matrices = func.vmap(cholesky_with_reg)(S_matrices)  # (N, n, n)
 
-        H_matrices = torch.stack([cholesky_with_reg(S_matrices[i]) for i in range(N)])
-
-        # Generate random phases - use the same seed for reproducibility
+        # Generate random phases - reproducible
         torch.manual_seed(self.seed)
-        phi = torch.rand((n, N), device=self.device) * 2 * torch.pi
+        phi = torch.rand((n, N), device=self.device) * 2 * torch.pi          # (n, N)
 
-        # Initialize B matrix
+        # Batched mat-vec over frequencies (einsum version)
+        exp_terms = torch.exp(1j * phi.t())                                   # (N, n)
+        Hc = H_matrices.to(torch.complex64)                                    # (N, n, n)
+        B_freq = torch.einsum("ljm,lm -> lj", Hc, exp_terms)                     # (N, n)
+
+        # Build B (n, M)
         B = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
+        B[:, :N] = B_freq.t()
 
-        # Calculate B matrix - consistent with main simulation method
-        for j in range(n):
-            # Create mask matrix where mask[m] = True if m <= j
-            m_indices = torch.arange(n, device=self.device)  # [n,]
-            mask = m_indices <= j  # [n,] boolean mask
-            
-            # H_matrices[l, j, m] for all frequencies l of H_{jm}
-            H_jm_all = H_matrices[:, j, :]  # [N, n]
-            
-            # phi[m, l] -> phi.T to get [N, n]
-            phi_transposed = phi.t()  # [N, n]
-            
-            # Calculate exp(i * phi_{ml})
-            exp_terms = torch.exp(1j * phi_transposed)  # [N, n]
-            
-            # Apply mask and sum
-            # Broadcast mask to [N, n] shape
-            mask_expanded = mask.unsqueeze(0).expand(N, -1)  # [N, n]
-            masked_terms = torch.where(mask_expanded, H_jm_all * exp_terms, 0.0)  # [N, n]
-            B_values = torch.sum(masked_terms, dim=1)  # [N,]
-            
-            # Put B_values into the first N positions of B matrix, remaining positions stay 0
-            B[j, :N] = B_values
-
-        # Compute FFT
+        # FFT along time axis
         G = torch.fft.ifft(B, dim=1) * M
 
-        # Compute wind field samples
+        # Wind samples
         p_indices = torch.arange(M, device=self.device)
         exponent = torch.exp(1j * (p_indices * torch.pi / M))
-        dw_tensor = torch.tensor(dw, device=self.device)
+        dw_tensor = torch.tensor(dw, device=self.device) if not isinstance(dw, torch.Tensor) else dw
         wind_samples = torch.sqrt(2 * dw_tensor) * (G * exponent.unsqueeze(0)).real
 
         return wind_samples

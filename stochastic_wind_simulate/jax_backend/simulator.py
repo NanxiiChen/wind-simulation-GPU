@@ -432,6 +432,7 @@ class JaxWindSimulator(BaseWindSimulator):
         # Process the full spectrum for this point batch
         return self._process_spectrum_to_samples(S_matrices_full, subkey, n, N, M, dw)
     
+    @partial(jit, static_argnums=(0, 3,4,5,6))
     def _process_spectrum_to_samples(self, S_matrices, key, n, N, M, dw):
         """Process spectrum matrices to wind samples (extracted from main simulation)."""
         # Perform Cholesky decomposition for each frequency point
@@ -439,43 +440,27 @@ class JaxWindSimulator(BaseWindSimulator):
         def cholesky_with_reg(S):
             return cholesky(S + jnp.eye(n) * 1e-12, lower=True)
 
-        H_matrices = vmap(cholesky_with_reg)(S_matrices)
+        H_matrices = vmap(cholesky_with_reg)(S_matrices)   # (N, n, n)
+        H_matrices = jnp.tril(H_matrices)                  # Ensure lower triangular
 
         # Generate random phases
         key, subkey = random.split(key)
-        phi = random.uniform(subkey, (n, N), minval=0, maxval=2 * jnp.pi)
+        phi = random.uniform(subkey, (n, N), minval=0, maxval=2 * jnp.pi)  # (n, N)
 
-        @partial(jit, static_argnums=(1, 2, 3))
-        def compute_B_for_point(j, N, M, n, H_matrices, phi):
-            """Compute B values for point j, fully vectorized implementation"""
-            m_indices = jnp.arange(n)
-            mask = m_indices <= j
-            
-            H_jm_all = H_matrices[:, j, :]
-            phi_transposed = phi.T
-            exp_terms = jnp.exp(1j * phi_transposed)
-            
-            masked_terms = jnp.where(mask, H_jm_all * exp_terms, 0.0)
-            B_values = jnp.sum(masked_terms, axis=1)
-            
-            return jnp.pad(B_values, (0, M - N), mode="constant")
+        # === New: batched mat-vec over frequencies ===
+        exp_terms = jnp.exp(1j * phi.T)                                   # (N, n)
+        B_freq = jnp.einsum("ljm, lm -> lj", H_matrices, exp_terms)  # (N, n)
 
-        # Parallel computation of B for each point
-        B = vmap(compute_B_for_point, in_axes=(0, None, None, None, None, None))(
-            jnp.arange(n), N, M, n, H_matrices, phi
-        )
-        
-        # Compute FFT to get G
-        G = vmap(jit(jnp.fft.ifft))(B) * M
+        # Transpose to (n, N) and zero-pad to M
+        B = jnp.pad(B_freq.T, ((0, 0), (0, M - N)), mode="constant")      # (n, M)
+
+        # Compute FFT to get G (vectorized along time axis)
+        G = jnp.fft.ifft(B, axis=1) * M                                   # (n, M)
 
         # Calculate wind field samples
-        @jit
-        def compute_samples_for_point(j):
-            p_indices = jnp.arange(M)
-            exponent = jnp.exp(1j * (p_indices * jnp.pi / M))
-            terms = G[j] * exponent
-            return jnp.sqrt(2 * dw) * jnp.real(terms)
+        p_indices = jnp.arange(M)
+        exponent = jnp.exp(1j * (p_indices * jnp.pi / M))                 # (M,)
 
-        wind_samples = vmap(compute_samples_for_point)(jnp.arange(n))
-        
+        wind_samples = jnp.sqrt(2 * dw) * jnp.real(G * exponent[None, :])           # (n, M)
         return wind_samples
+

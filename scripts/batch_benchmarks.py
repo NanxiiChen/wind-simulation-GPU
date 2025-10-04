@@ -244,15 +244,15 @@ def main():
         "--test-sizes",
         type=int,
         nargs="+",
-        default=[10, 25, 50, 100, 200, 350, 500, 750, 1000],
-        help="Test sample sizes (default: [10, 25, 50, 100, 200, 350, 500])",
+        default=[2, 10, 25, 50, 100, 200, 500, 1000, 2000, 5000],
+        help="Test sample sizes",
     )
     arg_parser.add_argument(
         "--modes",
         type=str,
         nargs="+",
         choices=["batched", "direct", "both"],
-        default=["both"],
+        default=["batched"],
         help="Test modes: batched, direct, or both (default: both)",
     )
     
