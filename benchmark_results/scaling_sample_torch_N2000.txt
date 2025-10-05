@@ -1,0 +1,7 @@
+n_samples,time_cost(s),memory_estimate(GB),successful
+2,0.5455,0.0006,True
+10,0.0019,0.0101,True
+50,0.0073,0.2295,True
+100,0.0183,0.9060,True
+200,0.0733,3.6001,True
+400,nan,14.3528,False

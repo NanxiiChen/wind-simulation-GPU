@@ -168,12 +168,24 @@ class TorchWindSimulator(BaseWindSimulator):
         z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # [n, 1], [1, n]
         U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # [n, 1], [1, n]
 
+        # s_values = self.spectrum.calculate_power_spectrum(
+        #     frequencies[:, None], positions[:, 2][None, :], component, **kwargs
+        # )  # [num_freqs, n
+        # s_i = s_values[:, :, None]  # [num_freqs, n, 1]
+        # s_j = s_values[:, None, :]  # [num_freqs, 1, n]
+        # coherence = self.calculate_coherence(
+        #     x_i, x_j, y_i, y_j, z_i, z_j, 
+        #     frequencies[:, None, None],  # [num_freqs, 1, 1]
+        #     U_i, U_j,  # [1, n, 1], [1, 1, n]
+        #     self.params["C_x"], self.params["C_y"], self.params["C_z"]
+        # )  # [num_freqs, n, n]
+        # S_matrices = self.calculate_cross_spectrum(s_i, s_j, coherence)  # [num_freqs, n, n]
+
         def _build_spectrum_for_position(freq, positions, component, **kwargs):
             s_values = self.spectrum.calculate_power_spectrum(
                 freq, positions[:, 2], component, **kwargs
             )
             s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
-
 
             coherence = self.calculate_coherence(
                 x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
@@ -187,8 +199,13 @@ class TorchWindSimulator(BaseWindSimulator):
             _build_spectrum_for_position(freq, positions, component, **kwargs)
             for freq in frequencies
         ])
+        # S_matrices = func.vmap(
+        #     _build_spectrum_for_position, 
+        #     in_dims=(0, None, None), 
+        # )(frequencies, positions, component, **kwargs)
         
         return S_matrices
+    
     def simulate_wind(self, positions, wind_speeds, component="u", 
                      max_memory_gb=4.0, point_batch_size=None, 
                      freq_batch_size=None, auto_batch=True, **kwargs):

@@ -1,0 +1,6 @@
+N_frequencies,time_cost(s),memory_estimate(GB),successful
+100,0.4297,0.0453,True
+500,0.4348,0.2265,True
+1000,0.4635,0.4530,True
+2000,0.4428,0.9060,True
+3000,0.5286,1.3590,True

@@ -1,0 +1,1 @@
+python scripts/scaling_benchmarks.py --backend torch     --sample-sizes 2 10 50 100 200 400     --frequency-sizes 100 500 1000 2000 3000     --fixed-N 2000 --fixed-n 100

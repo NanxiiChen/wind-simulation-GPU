@@ -1,0 +1,46 @@
+NUMPY Backend Scaling Performance Report
+============================================================
+
+SAMPLE SCALING RESULTS
+------------------------------
+Successful runs: 6/6
+
+Detailed Results:
+n_samples  Time(s)    Memory(GB)   Status    
+--------------------------------------------------
+2          0.0096     0.00         SUCCESS   
+10         0.0159     0.01         SUCCESS   
+50         0.1539     0.17         SUCCESS   
+100        0.5284     0.68         SUCCESS   
+200        2.0342     2.70         SUCCESS   
+400        9.5063     10.76        SUCCESS   
+
+Summary Statistics:
+  Total computation time: 12.2482s
+  Average time per run: 2.0414s
+  Maximum memory usage: 10.76GB
+  Largest successful n: 400
+  Estimated scaling exponent: 1.32
+  (Time ~ n^1.32)
+
+
+FREQUENCY SCALING RESULTS
+------------------------------
+Successful runs: 5/5
+
+Detailed Results:
+N_freq     Time(s)    Memory(GB)   Status    
+--------------------------------------------------
+100        0.0203     0.03         SUCCESS   
+500        0.1417     0.17         SUCCESS   
+1000       0.2646     0.34         SUCCESS   
+2000       0.5573     0.68         SUCCESS   
+3000       0.8023     1.02         SUCCESS   
+
+Summary Statistics:
+  Total computation time: 1.7863s
+  Average time per run: 0.3573s
+  Maximum memory usage: 1.02GB
+  Largest successful N: 3000
+  Estimated scaling exponent: 1.08
+  (Time ~ N^1.08)
