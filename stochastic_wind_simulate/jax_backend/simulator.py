@@ -217,6 +217,22 @@ class JaxWindSimulator(BaseWindSimulator):
             _build_spectrum_for_position,
             in_axes=(0, None, None),
         )(frequencies, positions, component)
+
+        """
+        # we can also vectorize the entire operation without vmap
+        # but more complex to read, and may use more memory
+        # It is more clear to separate the spatial and frequency dimensions
+        """
+        # s_values = self.spectrum.calculate_power_spectrum(
+        #     frequencies[:, None], positions[:, 2], component, **kwargs
+        # )  # (N, n)
+        # s_i = s_values[:, :, None]  # (N, n, 1)
+        # s_j = s_values[:, None, :]  # (N, 1, n)
+        # coherence = self.calculate_coherence(
+        #     x_i, x_j, y_i, y_j, z_i, z_j, frequencies[:, None, None], U_i, U_j,
+        #     self.params["C_x"], self.params["C_y"], self.params["C_z"]
+        # )  # (N, n, n)
+        # S_matrices = self.calculate_cross_spectrum(s_i, s_j, coherence)
         
         return S_matrices
 

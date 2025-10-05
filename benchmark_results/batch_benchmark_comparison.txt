@@ -4,12 +4,12 @@ Batch Processing Benchmark Comparison Report
 JAX Backend Results:
 ------------------------------
   Batched mode:
-    Average time: 2.6435s
-    Total time: 26.4348s
+    Average time: 2.6069s
+    Total time: 26.0687s
     Max memory estimate: 3353.66GB
     Successful runs: 10
 
 
 Overall Performance Ranking:
 ------------------------------
-1. jax_batched: 2.6435s average
+1. jax_batched: 2.6069s average

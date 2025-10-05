@@ -96,31 +96,41 @@ class NumpyWindSimulator(BaseWindSimulator):
         """Build cross-spectral density matrix S(w) using the new spectrum interface."""
         n = positions.shape[0]
         num_freqs = len(frequencies)
+        # Create grid coordinates
+        x_i, x_j = positions[:, 0:1], positions[:, 0:1].T  # [n, 1], [1, n]
+        y_i, y_j = positions[:, 1:2], positions[:, 1:2].T  # [n, 1], [1, n]
+        z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # [n, 1], [1, n]
+        U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # [n, 1], [1, n]
 
-        def _build_spectrum_for_position(freq, positions, component, **kwargs):
-            s_values = self.spectrum.calculate_power_spectrum(
-                freq, positions[:, 2], component, **kwargs
-            )
-            s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
+        s_values = self.spectrum.calculate_power_spectrum(
+            frequencies[:, None], positions[:, 2][None, :], component, **kwargs
+        )  # (N, n)
+        s_i, s_j = s_values[:, :, None], s_values[:, None, :]
+        # (N, n, 1), (N, 1, n)
+        coherence = self.calculate_coherence(
+            x_i, x_j, y_i, y_j, z_i, z_j, frequencies[:, None, None], U_i, U_j,  # (N, 1, 1)
+            self.params["C_x"], self.params["C_y"], self.params["C_z"]
+        )  # (N, n, n)
+        S_matrices = self.calculate_cross_spectrum(s_i, s_j, coherence)
+
+        # def _build_spectrum_for_position(freq, positions, component, **kwargs):
+        #     s_values = self.spectrum.calculate_power_spectrum(
+        #         freq, positions[:, 2], component, **kwargs
+        #     )
+        #     s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
             
-            # Create grid coordinates
-            x_i, x_j = positions[:, 0:1], positions[:, 0:1].T  # [n, 1], [1, n]
-            y_i, y_j = positions[:, 1:2], positions[:, 1:2].T  # [n, 1], [1, n]
-            z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # [n, 1], [1, n]
-            U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # [n, 1], [1, n]
-            
-            coherence = self.calculate_coherence(
-                x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
-                self.params["C_x"], self.params["C_y"], self.params["C_z"]
-            )
-            cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
-            return cross_spectrum
+        #     coherence = self.calculate_coherence(
+        #         x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
+        #         self.params["C_x"], self.params["C_y"], self.params["C_z"]
+        #     )
+        #     cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
+        #     return cross_spectrum
         
-        # Compute cross-spectral density matrix for each frequency point
-        S_matrices = np.array([
-            _build_spectrum_for_position(freq, positions, component, **kwargs)
-            for freq in frequencies
-        ])
+        # # Compute cross-spectral density matrix for each frequency point
+        # S_matrices = np.array([
+        #     _build_spectrum_for_position(freq, positions, component, **kwargs)
+        #     for freq in frequencies
+        # ])
         
         return S_matrices
 
