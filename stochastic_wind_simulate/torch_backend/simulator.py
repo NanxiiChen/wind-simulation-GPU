@@ -3,31 +3,33 @@ from typing import Dict
 import torch
 import torch.func as func
 from torch import Tensor
+
 from .psd import get_spectrum_class
 from ..base_simulator import BaseWindSimulator
 
 
 class TorchWindSimulator(BaseWindSimulator):
     """
-    Stochastic wind field simulator class implemented using PyTorch.
+    Stochastic wind field simulator implemented using PyTorch.
     
-    This class provides functionality for simulating fluctuating wind fields using
-    the spectral representation method with automatic batching for memory management.
-    PyTorch backend offers GPU acceleration and flexible tensor operations.
+    This class efficiently simulates fluctuating wind fields using the spectral 
+    representation method. It supports only frequency batching for memory management,
+    using vmap for parallel computation across frequencies to avoid storing large
+    cross-spectral density matrices.
     """
 
     def __init__(self, key=0, spectrum_type="kaimal-nd"):
         """
-        Initialize the wind field simulator.
-
+        Initialize the PyTorch wind field simulator.
+        
         Args:
             key (int): Random number seed for reproducible results
             spectrum_type (str): Type of wind spectrum to use (default: "kaimal-nd")
         """
-        super().__init__()  # Initialize base class
+        super().__init__()
         self.seed = key
         torch.manual_seed(key)
-
+        
         # Set computing device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
@@ -41,23 +43,32 @@ class TorchWindSimulator(BaseWindSimulator):
                  physical constants, grid specifications, and numerical settings
         """
         params = {
-            "K": 0.4,  # Dimensionless constant
-            "H_bar": 10.0,  # Average height of surrounding buildings (m)
-            "z_0": 0.05,  # Surface roughness height
-            "alpha_0": 0.16,  # Surface roughness exponent
-            "C_x": 16.0,  # Decay coefficient in x direction
-            "C_y": 6.0,  # Decay coefficient in y direction
-            "C_z": 10.0,  # Decay coefficient in z direction
-            "w_up": 5.0,  # Cutoff frequency (Hz)
-            "N": 3000,  # Number of frequency segments
-            "M": 6000,  # Number of time points (M=2N)
-            "T": 600,  # Simulation duration (s)
-            "dt": 0.1,  # Time step (s)
-            "U_d": 25.0,  # Design basic wind speed (m/s)
+            # Physical constants
+            "K": 0.4,           # von Karman constant
+            "H_bar": 10.0,      # Average height of surrounding buildings (m)
+            "z_0": 0.05,        # Surface roughness height (m)
+            "alpha_0": 0.16,    # Surface roughness exponent
+            
+            # Coherence coefficients
+            "C_x": 16.0,        # Decay coefficient in x direction
+            "C_y": 6.0,         # Decay coefficient in y direction
+            "C_z": 10.0,        # Decay coefficient in z direction
+            
+            # Frequency domain parameters
+            "w_up": 5.0,        # Cutoff frequency (Hz)
+            "N": 3000,          # Number of frequency segments
+            "M": 6000,          # Number of time points (M = 2*N)
+            
+            # Time domain parameters
+            "T": 600,           # Simulation duration (s)
+            "dt": 0.1,          # Time step (s)
+            "U_d": 25.0,        # Design basic wind speed (m/s)
         }
+        
+        # Calculate dependent parameters
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
-
+        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Zero plane displacement
+        
         return params
 
     def _to_tensor(self, value, device=None):
@@ -73,324 +84,342 @@ class TorchWindSimulator(BaseWindSimulator):
         """
         if device is None:
             device = self.device
-
+            
         if isinstance(value, torch.Tensor):
             return value.to(device)
         else:
             return torch.tensor(value, device=device)
 
-    def update_parameters(self, **kwargs):
+    @staticmethod
+    def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_zi, U_zj, C_x, C_y, C_z):
         """
-        Update simulation parameters.
+        Calculate spatial coherence function for wind field correlation.
         
         Args:
-            **kwargs: Keyword arguments for parameters to update
+            x_i, x_j: X-coordinates of points i and j (shapes: (n, 1), (1, n))
+            y_i, y_j: Y-coordinates of points i and j (shapes: (n, 1), (1, n))
+            z_i, z_j: Z-coordinates of points i and j (shapes: (n, 1), (1, n))
+            freq: Frequency (scalar or array)
+            U_zi, U_zj: Wind speeds at points i and j (shapes: (n, 1), (1, n))
+            C_x, C_y, C_z: Decay coefficients in x, y, z directions
+            
+        Returns:
+            Coherence matrix of shape (n, n) with values between 0 and 1
         """
-        for key, value in kwargs.items():
-            if key in self.params:
-                self.params[key] = value
-
-        # Update dependent parameters
-        self.params["dw"] = self.params["w_up"] / self.params["N"]
-        self.params["z_d"] = (
-            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
-        )
-        self.spectrum.params = self.params  # Update spectrum parameters
-
-    @staticmethod
-    def calculate_coherence(
-        x_i: Tensor,
-        x_j: Tensor,
-        y_i: Tensor,
-        y_j: Tensor,
-        z_i: Tensor,
-        z_j: Tensor,
-        freq: Tensor,
-        U_zi: Tensor,
-        U_zj: Tensor,
-        C_x: float,
-        C_y: float,
-        C_z: float,
-    ) -> Tensor:
-        """Calculate spatial correlation function Coh."""
         # Get device from input tensor
         device = x_i.device
         
-        # Convert to tensor
+        # Convert coefficients to tensors
         C_x_t = torch.tensor(C_x, device=device)
         C_y_t = torch.tensor(C_y, device=device)
         C_z_t = torch.tensor(C_z, device=device)
         
-        # Compute using PyTorch entirely
+        # Calculate spatial separation term
         distance_term = torch.sqrt(
-            C_x_t**2 * (x_i - x_j) ** 2
-            + C_y_t**2 * (y_i - y_j) ** 2
-            + C_z_t**2 * (z_i - z_j) ** 2
+            C_x_t**2 * (x_i - x_j) ** 2 +
+            C_y_t**2 * (y_i - y_j) ** 2 +
+            C_z_t**2 * (z_i - z_j) ** 2
         )
-
+        
+        # Add numerical stability protection
         denominator = U_zi + U_zj
         safe_denominator = torch.maximum(
             denominator, 
             torch.tensor(1e-8, device=device)
         )
-
+        
+        # Davenport coherence function
         return torch.exp(-2 * freq * distance_term / safe_denominator)
 
     @staticmethod
-    def calculate_cross_spectrum(
-        S_ii: Tensor, S_jj: Tensor, coherence: Tensor
-    ) -> Tensor:
-        """Calculate cross-spectral density function S_ij."""
+    def calculate_cross_spectrum(S_ii, S_jj, coherence):
+        """
+        Calculate cross-spectral density function S_ij.
+        
+        Args:
+            S_ii: Auto-spectral density at point i (shape: (n, 1))
+            S_jj: Auto-spectral density at point j (shape: (1, n))
+            coherence: Coherence function between points i and j (shape: (n, n))
+            
+        Returns:
+            Cross-spectral density matrix S_ij of shape (n, n)
+        """
         return torch.sqrt(S_ii * S_jj) * coherence
 
     @staticmethod
-    def calculate_simulation_frequency(N: int, dw: float, device=None) -> Tensor:
-        """Calculate simulation frequency array."""
+    def calculate_simulation_frequency(N, dw, device=None):
+        """
+        Calculate simulation frequency array.
+        
+        Args:
+            N (int): Number of frequency segments
+            dw (float): Frequency increment
+            device: Target device for tensor creation
+            
+        Returns:
+            Array of simulation frequencies of shape (N,)
+        """
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        return torch.arange(1, N + 1, device=device) * dw - dw / 2
+        return torch.arange(1, N + 1, device=device, dtype=torch.float32) * dw - dw / 2
 
-    def build_spectrum_matrix(
-        self, positions: Tensor, wind_speeds: Tensor, frequencies: Tensor, component, **kwargs
-    ) -> Tensor:
+    def build_amplitude_matrix(self, positions, wind_speeds, frequencies, component, **kwargs):
         """
-        Build cross-spectral density matrix S(w) using the new spectrum interface.
+        Build amplitude matrix B for all frequencies using parallel computation.
+        
+        This method avoids storing large cross-spectral density matrices by computing
+        amplitude coefficients for each frequency independently and in parallel.
+        
+        Args:
+            positions: Spatial coordinates (n, 3)
+            wind_speeds: Mean wind speeds (n,)
+            frequencies: Frequency array (N_batch,)
+            component: Wind component ('u' for along-wind, 'w' for vertical)
+            **kwargs: Additional parameters for spectrum calculation
+            
+        Returns:
+            B_matrix: Amplitude matrix (n, N_batch)
         """
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
         frequencies = torch.as_tensor(frequencies, device=self.device)
-
+        
         n = positions.shape[0]
-        num_freqs = len(frequencies)
-        # Create grid for spatial coordinates
-        x_i, x_j = positions[:, 0:1], positions[:, 0:1].T  # [n, 1], [1, n]
-        y_i, y_j = positions[:, 1:2], positions[:, 1:2].T  # [n, 1], [1, n]
-        z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # [n, 1], [1, n]
-        U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # [n, 1], [1, n]
+        N_batch = len(frequencies)
+        
+        # Create spatial coordinate grids for coherence calculation
+        x_i, x_j = positions[:, 0:1], positions[:, 0:1].T  # (n, 1), (1, n)
+        y_i, y_j = positions[:, 1:2], positions[:, 1:2].T  # (n, 1), (1, n) 
+        z_i, z_j = positions[:, 2:3], positions[:, 2:3].T  # (n, 1), (1, n)
+        U_i, U_j = wind_speeds[:, None], wind_speeds[None, :]  # (n, 1), (1, n)
+        
+        # Generate random phases for each frequency and spatial point
+        torch.manual_seed(self.seed)
+        phi = torch.rand((N_batch, n), device=self.device, dtype=torch.float32) * 2 * torch.pi  # (N_batch, n)
 
-        # s_values = self.spectrum.calculate_power_spectrum(
-        #     frequencies[:, None], positions[:, 2][None, :], component, **kwargs
-        # )  # [num_freqs, n
-        # s_i = s_values[:, :, None]  # [num_freqs, n, 1]
-        # s_j = s_values[:, None, :]  # [num_freqs, 1, n]
-        # coherence = self.calculate_coherence(
-        #     x_i, x_j, y_i, y_j, z_i, z_j, 
-        #     frequencies[:, None, None],  # [num_freqs, 1, 1]
-        #     U_i, U_j,  # [1, n, 1], [1, 1, n]
-        #     self.params["C_x"], self.params["C_y"], self.params["C_z"]
-        # )  # [num_freqs, n, n]
-        # S_matrices = self.calculate_cross_spectrum(s_i, s_j, coherence)  # [num_freqs, n, n]
-
-        def _build_spectrum_for_position(freq, positions, component, **kwargs):
-            s_values = self.spectrum.calculate_power_spectrum(
-                freq, positions[:, 2], component, **kwargs
-            )
-            s_i, s_j = s_values[:, None], s_values[None, :]  # [n, 1], [1, n]
-
+        def _single_freq_amplitude(freq_l, phi_l):
+            """
+            Compute amplitude coefficients for a single frequency.
+            
+            Args:
+                freq_l: Single frequency value (scalar)
+                phi_l: Random phases for this frequency (n,)
+                
+            Returns:
+                Complex amplitude coefficients (n,)
+            """
+            # Calculate auto-spectral densities at all points
+            s_values = self.spectrum.calculate_power_spectrum(freq_l, positions[:, 2], component)  # (n,)
+            s_i, s_j = s_values[:, None], s_values[None, :]  # (n, 1), (1, n)
+            
+            # Calculate spatial coherence matrix
             coherence = self.calculate_coherence(
-                x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j,
+                x_i, x_j, y_i, y_j, z_i, z_j, freq_l, U_i, U_j,
                 self.params["C_x"], self.params["C_y"], self.params["C_z"]
-            )
-            cross_spectrum = self.calculate_cross_spectrum(s_i, s_j, coherence)
-            return cross_spectrum
+            )  # (n, n)
+            
+            # Build cross-spectral density matrix
+            csd_matrix = self.calculate_cross_spectrum(s_i, s_j, coherence)  # (n, n)
+            
+            # Cholesky decomposition for amplitude matrix
+            # Ensure matrix is real and positive definite for Cholesky
+            csd_real = csd_matrix.real + torch.eye(n, device=self.device, dtype=torch.float32) * 1e-12
+            H_matrix = torch.linalg.cholesky(csd_real)  # (n, n)
+            
+            # Apply random phases and compute amplitude coefficients
+            E = torch.exp(1j * phi_l)  # (n,)
+            return torch.matmul(H_matrix.to(torch.complex64), E)  # (n,)
+
+        # Parallel computation across frequencies
+        B_non_zero = torch.stack([
+            _single_freq_amplitude(frequencies[i], phi[i, :])
+            for i in range(N_batch)
+        ])  # (N_batch, n)
+        # B_non_zero = func.vmap(_single_freq_amplitude)(frequencies, phi)  # (N_batch, n)
         
-        # Compute cross-spectral density matrix for each frequency point
-        S_matrices = torch.stack([
-            _build_spectrum_for_position(freq, positions, component, **kwargs)
-            for freq in frequencies
-        ])
-        # S_matrices = func.vmap(
-        #     _build_spectrum_for_position, 
-        #     in_dims=(0, None, None), 
-        # )(frequencies, positions, component, **kwargs)
-        
-        return S_matrices
+        return B_non_zero.T  # (n, N_batch)
     
     def simulate_wind(self, positions, wind_speeds, component="u", 
-                     max_memory_gb=4.0, point_batch_size=None, 
-                     freq_batch_size=None, auto_batch=True, **kwargs):
+                     max_memory_gb=4.0, freq_batch_size=None, auto_batch=True, **kwargs):
         """
-        Simulate fluctuating wind field with automatic batching for memory management.
+        Simulate fluctuating wind field time series.
         
-        This method now uses batching by default to handle large-scale simulations
-        efficiently and avoid memory issues.
-
+        Only frequency batching is supported for memory management. The method
+        automatically determines whether batching is needed based on memory estimation.
+        
         Args:
-            positions: Array of shape (n, 3), each row represents (x, y, z) coordinates
-            wind_speeds: Array of shape (n,), represents mean wind speed at each point
-            component: Wind component, 'u' for along-wind, 'w' for vertical
+            positions: Spatial coordinates (n, 3)
+            wind_speeds: Mean wind speeds at each point (n,)
+            component: Wind component ('u' for along-wind, 'w' for vertical)
             max_memory_gb: Maximum memory limit in GB (default: 4.0)
-            point_batch_size: Manual point batch size (auto-calculate if None)
-            freq_batch_size: Manual frequency batch size (auto-calculate if None)
+            freq_batch_size: Manual frequency batch size (None for auto-calculation)
             auto_batch: If True, automatically determine if batching is needed
-
+            **kwargs: Additional parameters for spectrum calculation
+            
         Returns:
-            wind_samples: Array of shape (n, M), fluctuating wind time series at each point
-            frequencies: Frequency array
+            wind_samples: Wind time series (n, M)
+            frequencies: Frequency array (N,)
         """
-        if not isinstance(positions, Tensor):
+        # Ensure positions is a PyTorch tensor
+        if not isinstance(positions, torch.Tensor):
             positions = torch.from_numpy(positions)
-        
+            
         n = positions.shape[0]
         N = self.params["N"]
         
-        # Use base class method to determine batching strategy
-        use_batching, point_batch_size, freq_batch_size = self._should_use_batching(
-            n, N, max_memory_gb, point_batch_size, freq_batch_size, auto_batch
-        )
-        
-        # Print information about memory and batching decisions
+        # Estimate memory requirements and determine batching strategy
         estimated_memory = self.estimate_memory_requirement(n, N)
-        if use_batching:
-            n_point_batches = self._get_batch_info(n, point_batch_size)
-            n_freq_batches = self._get_batch_info(N, freq_batch_size)
-            self.print_batch_info(
-                estimated_memory, max_memory_gb, use_batching, 
-                point_batch_size, freq_batch_size, n_point_batches, n_freq_batches
-            )
-        else:
-            self.print_batch_info(estimated_memory, max_memory_gb, use_batching)
+        use_batching = False
         
+        if auto_batch and estimated_memory > max_memory_gb:
+            use_batching = True
+        elif freq_batch_size is not None:
+            use_batching = True
+            
+        # Execute appropriate simulation method
         if use_batching:
-            return self._simulate_wind_with_batching(
-                positions, wind_speeds, component, 
-                point_batch_size, freq_batch_size, **kwargs
+            if freq_batch_size is None:
+                _, freq_batch_size = self.get_optimal_batch_sizes(n, N, max_memory_gb)
+                
+            return self._simulate_wind_with_freq_batching(
+                positions, wind_speeds, component, freq_batch_size, **kwargs
             )
         else:
-            # Use the direct method for small problems
             return self._simulate_fluctuating_wind(
                 positions, wind_speeds, component, **kwargs
             )
 
     def _simulate_fluctuating_wind(self, positions, wind_speeds, component, **kwargs):
-        """Internal implementation of wind field simulation."""
+        """
+        Direct simulation without frequency batching for small problems.
+        
+        This method is used when the estimated memory requirement is within
+        the specified limit and no manual batching is requested.
+        
+        Args:
+            positions: Spatial coordinates (n, 3)
+            wind_speeds: Mean wind speeds (n,)
+            component: Wind component ('u' or 'w')
+            **kwargs: Additional parameters for spectrum calculation
+            
+        Returns:
+            wind_samples: Wind time series (n, M)
+            frequencies: Frequency array (N,)
+        """
         positions = torch.as_tensor(positions, device=self.device)
         wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
-
+        
+        # Extract simulation parameters
         n = positions.shape[0]
-        N = self._to_tensor(self.params["N"], device=self.device)
-        M = self._to_tensor(self.params["M"], device=self.device)
-        dw = self._to_tensor(self.params["dw"], device=self.device)
-
-        frequencies = self.calculate_simulation_frequency(int(N.item()), float(dw.item()), device=self.device)
-
-        # Build cross-spectral density matrix
-        S_matrices = self.build_spectrum_matrix(
+        N = self.params["N"]
+        M = self.params["M"] 
+        dw = self.params["dw"]
+        
+        # Generate frequency array
+        frequencies = self.calculate_simulation_frequency(N, dw, device=self.device)  # (N,)
+        
+        # Build amplitude matrix for all frequencies at once
+        B_matrices = self.build_amplitude_matrix(
             positions, wind_speeds, frequencies, component, **kwargs
-        )
-
-        # Use shared processing to avoid duplication
-        N_int = int(N.item()) if isinstance(N, torch.Tensor) else int(N)
-        M_int = int(M.item()) if isinstance(M, torch.Tensor) else int(M)
-        wind_samples_t = self._process_spectrum_to_samples(S_matrices, n, N_int, M_int, dw)
-
-        return wind_samples_t.cpu().numpy(), frequencies.cpu().numpy()
-
-    def _simulate_wind_with_batching(self, positions, wind_speeds, component,
-                                   point_batch_size, freq_batch_size, **kwargs):
-        """Internal implementation of batched wind field simulation."""
-        n = positions.shape[0]
-        N = self.params["N"]
-        M = self.params["M"]
-        dw = self.params["dw"]
+        )  # (n, N)
         
-        # Use base class methods for batch calculations
-        n_point_batches = self._get_batch_info(n, point_batch_size)
-        n_freq_batches = self._get_batch_info(N, freq_batch_size)
+        # Convert amplitude matrix to wind time series using FFT
+        wind_samples = self._process_amplitude_to_samples(B_matrices, N, M, dw)  # (n, M)
         
-        frequencies = self.calculate_simulation_frequency(N, dw, device=self.device)
-        
-        # Initialize result array
-        wind_samples = torch.zeros((n, M), device=self.device)
-        
-        # Process in batches
-        for point_batch_idx in range(n_point_batches):
-            start_point, end_point = self._get_batch_range(point_batch_idx, point_batch_size, n)
-            
-            batch_positions = positions[start_point:end_point]
-            batch_wind_speeds = wind_speeds[start_point:end_point]
-            
-            # Use base class method for progress reporting
-            self.print_batch_progress(point_batch_idx, n_point_batches, "point", start_point, end_point)
-            
-            # Process this point batch
-            batch_samples = self._simulate_point_batch(
-                batch_positions, batch_wind_speeds, component, 
-                freq_batch_size, frequencies, **kwargs
-            )
-            
-            wind_samples[start_point:end_point] = batch_samples
-        
-        # Convert to NumPy array to ensure consistent output with JAX version
         return wind_samples.cpu().numpy(), frequencies.cpu().numpy()
-    
-    def _simulate_point_batch(self, positions, wind_speeds, component, 
-                            freq_batch_size, frequencies, **kwargs):
-        """Simulate a batch of points, potentially with frequency batching."""        
+
+    def _simulate_wind_with_freq_batching(self, positions, wind_speeds, component, freq_batch_size, **kwargs):
+        """
+        Simulate wind with frequency batching to manage memory usage.
+        
+        This method processes frequencies in smaller batches to reduce memory requirements.
+        Unlike the old approach, this directly computes amplitude coefficients for each
+        batch without storing large S matrices.
+        
+        Args:
+            positions: Spatial coordinates (n, 3)
+            wind_speeds: Mean wind speeds (n,)
+            component: Wind component ('u' or 'w')
+            freq_batch_size: Number of frequencies to process simultaneously
+            **kwargs: Additional parameters for spectrum calculation
+            
+        Returns:
+            wind_samples: Wind time series (n, M)
+            frequencies: Frequency array (N,)
+        """
+        positions = torch.as_tensor(positions, device=self.device)
+        wind_speeds = torch.as_tensor(wind_speeds, device=self.device)
+        
+        # Extract simulation parameters
         n = positions.shape[0]
         N = self.params["N"]
-        M = self.params["M"]
+        M = self.params["M"] 
         dw = self.params["dw"]
         
-        if freq_batch_size >= N:
-            # No frequency batching needed, use direct simulation
-            result = self._simulate_fluctuating_wind(positions, wind_speeds, component, **kwargs)
-            # Convert back to tensor if needed
-            if isinstance(result[0], torch.Tensor):
-                return result[0]
-            else:
-                return torch.tensor(result[0], device=self.device)
+        # Generate full frequency array
+        frequencies = self.calculate_simulation_frequency(N, dw, device=self.device)  # (N,)
         
-        # Build spectrum matrices in frequency batches
-        n_freq_batches = self._get_batch_info(N, freq_batch_size)
-        S_matrices_full = torch.zeros((N, n, n), device=self.device)
+        # Initialize amplitude matrix to accumulate results
+        B_total = torch.zeros((n, N), dtype=torch.complex64, device=self.device)
         
-        for freq_batch_idx in range(n_freq_batches):
-            start_freq, end_freq = self._get_batch_range(freq_batch_idx, freq_batch_size, N)
-            
-            batch_frequencies = frequencies[start_freq:end_freq]
-            
-            # Build spectrum matrix for this frequency batch
-            S_batch = self.build_spectrum_matrix(
-                positions, wind_speeds, batch_frequencies, component, **kwargs
-            )
-            
-            S_matrices_full[start_freq:end_freq] = S_batch
+        # Process frequencies in batches
+        num_batches = (N + freq_batch_size - 1) // freq_batch_size
         
-        # Process the full spectrum for this point batch
-        return self._process_spectrum_to_samples(S_matrices_full, n, N, M, dw)
-    
-    def _process_spectrum_to_samples(self, S_matrices, n, N, M, dw):
-        """Process spectrum matrices to wind samples (extracted from main simulation)."""
-        # Perform Cholesky decomposition for each frequency point (vectorized)
-        def cholesky_with_reg(S):
-            return torch.linalg.cholesky(
-                S + torch.eye(n, device=self.device) * 1e-12
-            )
-        H_matrices = func.vmap(cholesky_with_reg)(S_matrices)  # (N, n, n)
-        # enfore lower triangular
-        H_matrices = torch.tril(H_matrices)
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * freq_batch_size
+            end_idx = min(start_idx + freq_batch_size, N)
+            
+            # Extract frequency batch
+            freq_batch = frequencies[start_idx:end_idx]  # (batch_size,)
+            
+            # Build amplitude matrix for this frequency batch
+            B_batch = self.build_amplitude_matrix(
+                positions, wind_speeds, freq_batch, component, **kwargs
+            )  # (n, batch_size)
+            
+            # Store in appropriate position of full amplitude matrix
+            B_total[:, start_idx:end_idx] = B_batch
+        
+        # Convert amplitude matrix to wind time series using FFT
+        wind_samples = self._process_amplitude_to_samples(B_total, N, M, dw)  # (n, M)
+        
+        return wind_samples.cpu().numpy(), frequencies.cpu().numpy()
 
-        # Generate random phases - reproducible
-        torch.manual_seed(self.seed)
-        phi = torch.rand((n, N), device=self.device) * 2 * torch.pi          # (n, N)
 
-        # Batched mat-vec over frequencies (einsum version)
-        exp_terms = torch.exp(1j * phi.t())                                   # (N, n)
-        Hc = H_matrices.to(torch.complex64)                                    # (N, n, n)
-        B_freq = torch.einsum("ljm,lm -> lj", Hc, exp_terms)                     # (N, n)
 
-        # Build B (n, M)
-        B = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
-        B[:, :N] = B_freq.t()
-
-        # FFT along time axis
-        G = torch.fft.ifft(B, dim=1) * M
-
-        # Wind samples
-        p_indices = torch.arange(M, device=self.device)
-        exponent = torch.exp(1j * (p_indices * torch.pi / M))
-        dw_tensor = torch.tensor(dw, device=self.device) if not isinstance(dw, torch.Tensor) else dw
-        wind_samples = torch.sqrt(2 * dw_tensor) * (G * exponent.unsqueeze(0)).real
-
+    def _process_amplitude_to_samples(self, B_matrices, N, M, dw):
+        """
+        Convert amplitude matrix to wind time series using FFT.
+        
+        This method implements the same FFT-based conversion as JAX version.
+        
+        Args:
+            B_matrices: Complex amplitude matrix (n, N)
+            N: Number of frequency points
+            M: Number of time points
+            dw: Frequency step
+            
+        Returns:
+            wind_samples: Wind time series (n, M)
+        """
+        n = B_matrices.shape[0]
+        
+        # Build full amplitude matrix B (n, M) with proper zero padding
+        B_full = torch.zeros((n, M), dtype=torch.complex64, device=self.device)
+        B_full[:, :N] = B_matrices  # Copy amplitude coefficients
+        
+        # Apply IFFT to convert to time domain
+        # Scale by M to match JAX implementation
+        G = torch.fft.ifft(B_full, dim=1) * M  # (n, M)
+        
+        # Apply phase correction and scaling to get real wind samples
+        p_indices = torch.arange(M, device=self.device, dtype=torch.float32)
+        phase_correction = torch.exp(1j * (p_indices * torch.pi / M))
+        
+        # Convert dw to tensor if needed
+        dw_tensor = torch.tensor(dw, device=self.device, dtype=torch.float32) if not isinstance(dw, torch.Tensor) else dw
+        
+        # Final wind samples (real part only)
+        wind_samples = torch.sqrt(2 * dw_tensor) * (G * phase_correction.unsqueeze(0)).real
+        
         return wind_samples

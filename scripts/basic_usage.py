@@ -65,7 +65,7 @@ def main():
     wind_speeds = positions[:, 0] * 0.0 + 30.0  # Simulate linearly varying mean wind speed
 
     start_time = time.time()
-    samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u")
+    samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u",)
     elapsed_time = time.time() - start_time
 
     logging.info(f"Simulation completed, elapsed time: {elapsed_time:.2f} seconds")

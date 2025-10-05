@@ -1,15 +1,15 @@
 Batch Processing Benchmark Comparison Report
 ==================================================
 
-TORCH Backend Results:
+NUMPY Backend Results:
 ------------------------------
-  Direct mode:
-    Average time: 0.1334s
-    Total time: 0.8007s
-    Max memory estimate: 3353.66GB
-    Successful runs: 6
+  Batched mode:
+    Average time: 52.6288s
+    Total time: 421.0304s
+    Max memory estimate: 0.26GB
+    Successful runs: 8
 
 
 Overall Performance Ranking:
 ------------------------------
-1. torch_direct: 0.1334s average
+1. numpy_batched: 52.6288s average

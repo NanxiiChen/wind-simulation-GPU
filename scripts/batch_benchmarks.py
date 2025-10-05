@@ -17,22 +17,22 @@ logging.basicConfig(
 
 def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     """
-    Benchmark a specific backend with optional batching.
+    Benchmark a specific backend with optional frequency batching.
+    Only frequency batching is supported.
     
     Args:
         backend: Backend name ('jax', 'torch', 'numpy')
         ns: List of sample sizes to test
-        use_batching: Whether to use batching
+        use_batching: Whether to use frequency batching
         max_memory_gb: Memory limit for batching
         
     Returns:
         List of time costs for each sample size
     """
-    logging.info(f"Benchmarking {backend} backend with batching={use_batching}")
+    logging.info(f"Benchmarking {backend} backend with freq batching={use_batching}")
     
     simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
     
-    # Use smaller parameters for faster benchmarking
     simulator.update_parameters(
         N=3000,     # Reduced frequency points
         M=6000,     # Reduced time points  
@@ -53,7 +53,7 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     output_file = results_dir / f"batch_benchmark_{backend}_{batch_suffix}.txt"
     
     with open(output_file, "w") as f:
-        f.write("n_samples,time_cost(s),memory_estimate(GB),used_batching,point_batch_size,freq_batch_size\n")
+        f.write("n_samples,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size\n")
     
     Z = 30.0  # Height (m)
     
@@ -88,17 +88,15 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
         
         # Let the simulator determine if batching is needed and calculate optimal batch sizes
         actual_batching = False
-        point_batch_size = None
         freq_batch_size = None
         
         if use_batching and hasattr(simulator, '_should_use_batching'):
-            # Use the simulator's built-in logic to determine if batching is needed
-            use_batch, auto_point_batch, auto_freq_batch = simulator._should_use_batching(
+            # 只关注频率分batch
+            use_batch, _, auto_freq_batch = simulator._should_use_batching(
                 n, simulator.params["N"], max_memory_gb, None, None, auto_batch=True
             )
             actual_batching = use_batch
             if use_batch:
-                point_batch_size = auto_point_batch
                 freq_batch_size = auto_freq_batch
         
         try:
@@ -128,36 +126,34 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
                 actual_batching = memory_estimate > max_memory_gb
                 if actual_batching and hasattr(simulator, 'get_optimal_batch_sizes'):
                     # Get the optimal batch sizes that would have been used
-                    point_batch_size, freq_batch_size = simulator.get_optimal_batch_sizes(
+                    _, freq_batch_size = simulator.get_optimal_batch_sizes(
                         n, simulator.params["N"], max_memory_gb
                     )
                 else:
-                    point_batch_size, freq_batch_size = None, None
+                    freq_batch_size = None
             else:
                 actual_batching = False
-                point_batch_size, freq_batch_size = None, None
+                freq_batch_size = None
             
             # Store batch information
             batch_info.append({
-                'point_batch_size': point_batch_size,
                 'freq_batch_size': freq_batch_size,
                 'used_batching': actual_batching
             })
             
             logging.info(f"  n={n}: {elapsed_time:.4f}s, memory={memory_estimate:.2f}GB, "
-                        f"batching={actual_batching}")
+                        f"freq_batching={actual_batching}")
             
             # Write to file
             with open(output_file, "a") as f:
                 f.write(f"{n},{elapsed_time:.4f},{memory_estimate:.4f},"
-                       f"{actual_batching},{point_batch_size},{freq_batch_size}\n")
+                       f"{actual_batching},{freq_batch_size}\n")
                 
         except Exception as e:
             logging.error(f"Error with {backend} backend, n={n}: {e}")
             time_costs.append(np.nan)
             memory_estimates.append(memory_estimate)
             batch_info.append({
-                'point_batch_size': point_batch_size,
                 'freq_batch_size': freq_batch_size,
                 'used_batching': actual_batching
             })
@@ -165,7 +161,7 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
             # Write error to file
             with open(output_file, "a") as f:
                 f.write(f"{n},NaN,{memory_estimate:.4f},"
-                       f"{actual_batching},{point_batch_size},{freq_batch_size}\n")
+                       f"{actual_batching},{freq_batch_size}\n")
     
     return time_costs, memory_estimates, batch_info
 
@@ -244,7 +240,7 @@ def main():
         "--test-sizes",
         type=int,
         nargs="+",
-        default=[2, 10, 25, 50, 100, 200, 500, 1000, 2000, 5000],
+        default=[2, 10, 25, 50, 100, 200, 500, 1000],
         help="Test sample sizes",
     )
     arg_parser.add_argument(
