@@ -40,7 +40,7 @@ class BaseWindSimulator(ABC):
         """
         # Main matrices: S_matrices (n_freq, n, n), H_matrices (n_freq, n, n), B (n, M)
         # Complex matrices use 2x memory, assuming 64-bit floats (8 bytes)
-        dtype_size = 8
+        dtype_size = 4
 
         S_memory = n_frequencies * n_points * n_points * dtype_size  # Real
         H_memory = n_frequencies * n_points * n_points * dtype_size * 2  # Complex

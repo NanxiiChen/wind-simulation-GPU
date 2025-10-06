@@ -1,9 +1,9 @@
 n_samples,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size
-2,0.5916,0.0009,False,None
-10,0.3586,0.0152,False,None
-25,0.3835,0.0883,False,None
-50,0.4367,0.3442,False,None
-100,0.4438,1.3590,False,None
-200,1.0721,5.4002,True,750
-500,1.8120,33.6170,True,375
-1000,2.2322,134.2893,True,375
+2,0.5919,0.0004,False,None
+10,0.3840,0.0076,False,None
+25,0.3785,0.0441,False,None
+50,0.4272,0.1721,False,None
+100,0.4327,0.6795,False,None
+200,0.4351,2.7001,False,None
+500,1.1528,16.8085,True,750
+1000,1.6041,67.1446,True,750

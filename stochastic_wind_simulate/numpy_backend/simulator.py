@@ -364,8 +364,8 @@ class NumpyWindSimulator(BaseWindSimulator):
         Returns:
             Estimated memory requirement in GB
         """
-        # NumPy typically uses 64-bit floats (8 bytes) and 128-bit complex (16 bytes)
-        float_size = 8
+        # NumPy typically uses 32-bit floats (4 bytes) and 128-bit complex (16 bytes)
+        float_size = 4
         complex_size = 16
         
         # Main memory components in new architecture:

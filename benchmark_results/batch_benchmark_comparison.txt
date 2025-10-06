@@ -4,12 +4,12 @@ Batch Processing Benchmark Comparison Report
 NUMPY Backend Results:
 ------------------------------
   Batched mode:
-    Average time: 52.6288s
-    Total time: 421.0304s
-    Max memory estimate: 0.26GB
+    Average time: 50.3954s
+    Total time: 403.1630s
+    Max memory estimate: 0.25GB
     Successful runs: 8
 
 
 Overall Performance Ranking:
 ------------------------------
-1. numpy_batched: 52.6288s average
+1. numpy_batched: 50.3954s average
