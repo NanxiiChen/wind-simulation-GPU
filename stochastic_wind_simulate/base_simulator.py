@@ -53,7 +53,8 @@ class BaseWindSimulator(ABC):
 
     def get_optimal_batch_sizes(self, n_points, n_frequencies, max_memory_gb=4.0):
         """
-        Calculate optimal batch sizes for points and frequencies to fit within memory limit.
+        Calculate optimal frequency batch size to fit within memory limit.
+        Note: Spatial batching is not used to preserve complete spatial correlation structure.
         
         Args:
             n_points: Total number of simulation points
@@ -61,21 +62,18 @@ class BaseWindSimulator(ABC):
             max_memory_gb: Maximum memory limit in GB
             
         Returns:
-            Tuple of (point_batch_size, frequency_batch_size)
+            Tuple of (point_batch_size, frequency_batch_size) for compatibility
         """
-        # Start with full sizes and reduce if necessary
-        point_batch = n_points
+        # Only use frequency batching to preserve spatial correlation integrity
+        point_batch = n_points  # Always use all spatial points
         freq_batch = n_frequencies
         
-        # Binary search for optimal batch sizes
+        # Binary search for optimal frequency batch size
         while self.estimate_memory_requirement(point_batch, freq_batch) > max_memory_gb:
-            if point_batch > freq_batch:
-                point_batch = max(1, point_batch // 2)
-            else:
-                freq_batch = max(1, freq_batch // 2)
+            freq_batch = max(1, freq_batch // 2)
                 
             # Prevent infinite loop
-            if point_batch == 1 and freq_batch == 1:
+            if freq_batch == 1:
                 break
         
         return point_batch, freq_batch
@@ -83,13 +81,14 @@ class BaseWindSimulator(ABC):
     def _should_use_batching(self, n_points, n_frequencies, max_memory_gb, 
                            point_batch_size, freq_batch_size, auto_batch):
         """
-        Determine whether batching should be used based on memory requirements and user settings.
+        Determine whether frequency batching should be used based on memory requirements.
+        Note: Only frequency batching is supported to preserve spatial correlation structure.
         
         Args:
             n_points: Number of simulation points
             n_frequencies: Number of frequency points
             max_memory_gb: Maximum memory limit in GB
-            point_batch_size: Manual point batch size (None for auto)
+            point_batch_size: Manual point batch size (ignored, kept for compatibility)
             freq_batch_size: Manual frequency batch size (None for auto)
             auto_batch: If True, automatically determine if batching is needed
             
@@ -110,15 +109,19 @@ class BaseWindSimulator(ABC):
                 use_batching = True
         
         if use_batching:
-            # Use provided batch sizes or calculate optimal ones
-            if point_batch_size is None or freq_batch_size is None:
-                optimal_point_batch, optimal_freq_batch = self.get_optimal_batch_sizes(
+            # Always use all spatial points to preserve correlation structure
+            point_batch_size = n_points
+            
+            # Use provided frequency batch size or calculate optimal one
+            if freq_batch_size is None:
+                _, optimal_freq_batch = self.get_optimal_batch_sizes(
                     n_points, n_frequencies, max_memory_gb
                 )
-                if point_batch_size is None:
-                    point_batch_size = optimal_point_batch
-                if freq_batch_size is None:
-                    freq_batch_size = optimal_freq_batch
+                freq_batch_size = optimal_freq_batch
+        else:
+            # No batching: use all points and frequencies
+            point_batch_size = n_points
+            freq_batch_size = n_frequencies
         
         return use_batching, point_batch_size, freq_batch_size
 
@@ -155,23 +158,24 @@ class BaseWindSimulator(ABC):
                         point_batch_size=None, freq_batch_size=None, 
                         n_point_batches=None, n_freq_batches=None):
         """
-        Print informative messages about batching decisions and progress.
+        Print informative messages about frequency batching decisions and progress.
+        Note: Only frequency batching is used to preserve spatial correlation structure.
         
         Args:
             estimated_memory: Estimated memory requirement in GB
             max_memory_gb: Maximum memory limit in GB
-            use_batching: Whether batching is being used
-            point_batch_size: Size of point batches (if using batching)
+            use_batching: Whether frequency batching is being used
+            point_batch_size: Size of point batches (always equals total points)
             freq_batch_size: Size of frequency batches (if using batching)
-            n_point_batches: Number of point batches (if using batching)
+            n_point_batches: Number of point batches (always 1)
             n_freq_batches: Number of frequency batches (if using batching)
         """
         print(f"Estimated memory requirement: {estimated_memory:.2f} GB")
         
         if use_batching:
-            print(f"Using batched simulation with point_batch_size={point_batch_size}, freq_batch_size={freq_batch_size}")
-            if n_point_batches and n_freq_batches:
-                print(f"Running batched simulation: {n_point_batches} point batches × {n_freq_batches} frequency batches")
+            print(f"Using frequency batching with freq_batch_size={freq_batch_size} (all {point_batch_size} spatial points preserved)")
+            if n_freq_batches:
+                print(f"Running batched simulation: {n_freq_batches} frequency batches")
         else:
             print("Memory requirement within limit, using direct simulation")
 
