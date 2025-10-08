@@ -27,11 +27,11 @@ Key features include:
 
 Time comparison of wind field simulation using JAX, PyTorch, and NumPy implementations. The results demonstrate the significant performance advantage of GPU-accelerated methods over traditional CPU-based approaches.
 
-![time_comparison](./img/time_cost_comparison.png)
-<!-- 
-| Num_samples | JAX (s) | PyTorch (s) | CPU (s) |
-|-------------|---------|-------------|---------|
-| 100        | 1.32    | 1.56        | 7200+  | -->
+<!-- ![time_comparison](./img/time_cost_comparison.png)
+![time_comparison_freq](./img/freq_time_cost_comparison.png) -->
+
+<img src="./img/time_cost_comparison.png" alt="Time Cost Comparison" width="600"/>
+<img src="./img/freq_time_cost_comparison.png" alt="Frequency Time Cost Comparison" width="600"/>
 
 
 ### Application to Engineering Problems
