@@ -1,0 +1,9 @@
+n_samples,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size
+2,0.0693,0.0004,False,None
+10,0.0781,0.0019,False,None
+25,0.1125,0.0048,False,None
+50,0.2028,0.0096,False,None
+100,0.8201,0.0195,False,None
+200,16.0135,0.0401,False,None
+500,69.3171,0.1090,False,None
+1000,338.1333,0.2470,False,None

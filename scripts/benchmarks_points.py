@@ -1,3 +1,9 @@
+"""
+This script benchmarks the performance of different backends (JAX, PyTorch, NumPy)
+It mainly tests the performance of each backend with different sample sizes under fixed frequency segments and time points.
+It was created by LLM.
+"""
+
 import time
 import logging
 import argparse
@@ -15,7 +21,7 @@ logging.basicConfig(
 )
 
 
-def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
+def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0, n_frequency=3000):
     """
     Benchmark a specific backend with optional frequency batching.
     Only frequency batching is supported.
@@ -25,6 +31,7 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
         ns: List of sample sizes to test
         use_batching: Whether to use frequency batching
         max_memory_gb: Memory limit for batching
+        n_frequency: Number of frequency segments (N)
         
     Returns:
         List of time costs for each sample size
@@ -34,10 +41,10 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
     
     simulator.update_parameters(
-        N=3000,     # Reduced frequency points
-        M=6000,     # Reduced time points  
-        T=600,      # Reduced duration
-        w_up=1.0    # Reduced cutoff frequency
+        N=n_frequency,           # Frequency points (configurable)
+        M=2*n_frequency,         # Time points (M = 2*N)
+        T=600,                   # Reduced duration
+        w_up=1.0                 # Reduced cutoff frequency
     )
     
     time_costs = []
@@ -50,7 +57,7 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     
     # Create output file
     batch_suffix = "batched" if use_batching else "direct"
-    output_file = results_dir / f"batch_benchmark_{backend}_{batch_suffix}.txt"
+    output_file = results_dir / f"points_benchmark_{backend}_{batch_suffix}.txt"
     
     with open(output_file, "w") as f:
         f.write("n_samples,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size\n")
@@ -59,6 +66,18 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
     
     for i, n in enumerate(ns):
         logging.info(f"Testing {backend} with {n} points...")
+        
+        # Clear any potential caches before each test
+        if hasattr(simulator, 'spectrum') and hasattr(simulator.spectrum, '__dict__'):
+            # Clear spectrum cache if it exists
+            for attr in list(simulator.spectrum.__dict__.keys()):
+                if 'cache' in attr.lower():
+                    delattr(simulator.spectrum, attr)
+        
+        # Reset random seed for reproducible but independent results
+        simulator.seed = 42 + i  # Different seed for each point size test
+        if backend == "numpy":
+            np.random.seed(simulator.seed)
         
         # Create positions
         positions = np.zeros((n, 3))
@@ -149,6 +168,27 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
                 f.write(f"{n},{elapsed_time:.4f},{memory_estimate:.4f},"
                        f"{actual_batching},{freq_batch_size}\n")
                 
+            # Clear caches and force garbage collection after each test
+            if backend == "jax":
+                try:
+                    import jax
+                    jax.clear_caches()
+                except:
+                    pass
+            elif backend == "torch":
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    # Clear PyTorch internal caches
+                    torch._C._clear_cache()
+                except:
+                    pass
+            
+            # Force Python garbage collection
+            import gc
+            gc.collect()
+                
         except Exception as e:
             logging.error(f"Error with {backend} backend, n={n}: {e}")
             time_costs.append(np.nan)
@@ -162,6 +202,25 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0):
             with open(output_file, "a") as f:
                 f.write(f"{n},NaN,{memory_estimate:.4f},"
                        f"{actual_batching},{freq_batch_size}\n")
+                       
+            # Clear caches even after errors
+            if backend == "jax":
+                try:
+                    import jax
+                    jax.clear_caches()
+                except:
+                    pass
+            elif backend == "torch":
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    torch._C._clear_cache()
+                except:
+                    pass
+            
+            import gc
+            gc.collect()
     
     return time_costs, memory_estimates, batch_info
 
@@ -170,7 +229,7 @@ def create_comparison_report(results):
     """Create a comparison report of all benchmark results."""
     results_dir = Path("benchmark_results")
     
-    with open(results_dir / "batch_benchmark_comparison.txt", "w") as f:
+    with open(results_dir / "points_benchmark_comparison.txt", "w") as f:
         f.write("Batch Processing Benchmark Comparison Report\n")
         f.write("=" * 50 + "\n\n")
         
@@ -244,12 +303,18 @@ def main():
         help="Test sample sizes",
     )
     arg_parser.add_argument(
+        "--n-frequency",
+        type=int,
+        default=3000,
+        help="Number of frequency segments (N) (default: 3000)",
+    )
+    arg_parser.add_argument(
         "--modes",
         type=str,
         nargs="+",
         choices=["batched", "direct", "both"],
         default=["batched"],
-        help="Test modes: batched, direct, or both (default: both)",
+        help="Test modes: batched, direct, or both (default: batched)",
     )
     
     args = arg_parser.parse_args()
@@ -270,6 +335,7 @@ def main():
     logging.info(f"Backends: {backends}")
     logging.info(f"Modes: {modes}")
     logging.info(f"Test sizes: {args.test_sizes}")
+    logging.info(f"N frequency: {args.n_frequency}")
     logging.info(f"Max memory: {args.max_memory}GB")
     
     results = {}
@@ -286,7 +352,7 @@ def main():
             
             try:
                 times, memories, batch_info = benchmark_backend(
-                    backend, args.test_sizes, use_batching, args.max_memory
+                    backend, args.test_sizes, use_batching, args.max_memory, args.n_frequency
                 )
                 
                 results[backend][mode] = {
@@ -316,7 +382,7 @@ def main():
     create_comparison_report(results)
     
     logging.info(f"\nBenchmark completed! Results saved in benchmark_results/")
-    logging.info(f"Check batch_benchmark_comparison.txt for detailed comparison.")
+    logging.info(f"Check points_benchmark_comparison.txt for detailed comparison.")
 
 
 if __name__ == "__main__":
