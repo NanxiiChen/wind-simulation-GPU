@@ -1,0 +1,16 @@
+Frequency Scaling Benchmark Comparison Report
+Fixed points: 100
+==================================================
+
+TORCH Backend Results:
+------------------------------
+  Batched mode:
+    Average time: 2.1291s
+    Total time: 17.0326s
+    Max memory estimate: 2.26GB
+    Successful runs: 8
+
+
+Overall Performance Ranking:
+------------------------------
+1. torch_batched: 2.1291s average

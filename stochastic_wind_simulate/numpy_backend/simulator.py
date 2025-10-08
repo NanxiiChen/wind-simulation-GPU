@@ -350,40 +350,40 @@ class NumpyWindSimulator(BaseWindSimulator):
         
         return wind_samples
 
-    def estimate_memory_requirement(self, n_points, n_frequencies):
-        """
-        Estimate memory requirement for NumPy backend in GB.
+    # def estimate_memory_requirement(self, n_points, n_frequencies):
+    #     """
+    #     Estimate memory requirement for NumPy backend in GB.
         
-        With the new vmap-style architecture, we no longer store large S matrices.
-        Memory usage is now dominated by the amplitude matrix and FFT operations.
+    #     With the new vmap-style architecture, we no longer store large S matrices.
+    #     Memory usage is now dominated by the amplitude matrix and FFT operations.
         
-        Args:
-            n_points: Number of simulation points
-            n_frequencies: Number of frequency points
+    #     Args:
+    #         n_points: Number of simulation points
+    #         n_frequencies: Number of frequency points
             
-        Returns:
-            Estimated memory requirement in GB
-        """
-        # NumPy typically uses 32-bit floats (4 bytes) and 128-bit complex (16 bytes)
-        float_size = 4
-        complex_size = 16
+    #     Returns:
+    #         Estimated memory requirement in GB
+    #     """
+    #     # NumPy typically uses 32-bit floats (4 bytes) and 128-bit complex (16 bytes)
+    #     float_size = 4
+    #     complex_size = 16
         
-        # Main memory components in new architecture:
-        # 1. Amplitude matrix B: (n_points, n_frequencies) complex
-        B_memory = n_points * n_frequencies * complex_size
+    #     # Main memory components in new architecture:
+    #     # 1. Amplitude matrix B: (n_points, n_frequencies) complex
+    #     B_memory = n_points * n_frequencies * complex_size
         
-        # 2. Full amplitude matrix for FFT: (n_points, M) where M = 2*N
-        M = 2 * n_frequencies
-        B_full_memory = n_points * M * complex_size
+    #     # 2. Full amplitude matrix for FFT: (n_points, M) where M = 2*N
+    #     M = 2 * n_frequencies
+    #     B_full_memory = n_points * M * complex_size
         
-        # 3. Intermediate arrays and working memory (coherence, CSD matrix per frequency)
-        # These are computed one frequency at a time, so memory is O(n^2) not O(N*n^2)
-        temp_memory = n_points * n_points * complex_size * 3  # CSD, H, coherence matrices
+    #     # 3. Intermediate arrays and working memory (coherence, CSD matrix per frequency)
+    #     # These are computed one frequency at a time, so memory is O(n^2) not O(N*n^2)
+    #     temp_memory = n_points * n_points * complex_size * 3  # CSD, H, coherence matrices
         
-        # 4. Random phase array: (n_frequencies, n_points)
-        phi_memory = n_frequencies * n_points * float_size
+    #     # 4. Random phase array: (n_frequencies, n_points)
+    #     phi_memory = n_frequencies * n_points * float_size
         
-        # Total with safety factor for NumPy operations
-        total_bytes = (B_memory + B_full_memory + temp_memory + phi_memory) * 1.3
+    #     # Total with safety factor for NumPy operations
+    #     total_bytes = (B_memory + B_full_memory + temp_memory + phi_memory) * 1.3
         
-        return total_bytes / (1024**3)  # Convert to GB
+    #     return total_bytes / (1024**3)  # Convert to GB

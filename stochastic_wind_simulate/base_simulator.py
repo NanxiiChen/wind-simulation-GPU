@@ -47,7 +47,7 @@ class BaseWindSimulator(ABC):
         B_memory = n_points * (n_frequencies * 2) * dtype_size * 2  # Complex, M = 2*N
         
         # Additional working memory (factor of 2 for safety)
-        total_bytes = (S_memory + H_memory + B_memory) * 2
+        total_bytes = (S_memory + H_memory + B_memory) * 2.0
         
         return total_bytes / (1024**3)  # Convert to GB
 
@@ -69,12 +69,19 @@ class BaseWindSimulator(ABC):
         freq_batch = n_frequencies
         
         # Binary search for optimal frequency batch size
-        while self.estimate_memory_requirement(point_batch, freq_batch) > max_memory_gb:
-            freq_batch = max(1, freq_batch // 2)
+        # while self.estimate_memory_requirement(point_batch, freq_batch) > max_memory_gb:
+        #     freq_batch = max(1, freq_batch // 2)
                 
-            # Prevent infinite loop
-            if freq_batch == 1:
-                break
+        #     # Prevent infinite loop
+        #     if freq_batch == 1:
+        #         break
+
+        freq_batch = min(
+            freq_batch,
+            int(
+                max_memory_gb * (1024**3) / ((3*n_points**2 + 4 * n_points) * 4 * 2)
+            )
+        )
         
         return point_batch, freq_batch
 

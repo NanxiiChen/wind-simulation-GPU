@@ -1,0 +1,15 @@
+Batch Processing Benchmark Comparison Report
+==================================================
+
+TORCH Backend Results:
+------------------------------
+  Batched mode:
+    Average time: 4.1432s
+    Total time: 33.1456s
+    Max memory estimate: 67.14GB
+    Successful runs: 8
+
+
+Overall Performance Ranking:
+------------------------------
+1. torch_batched: 4.1432s average
