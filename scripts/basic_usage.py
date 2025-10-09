@@ -40,7 +40,7 @@ def main():
     )
 
     # Define simulation point positions and mean wind speeds
-    n = 100  # Number of simulation points
+    n = 500  # Number of simulation points
     Z = 30.0  # Height (m)
 
     positions = np.zeros((n, 3))
@@ -65,7 +65,8 @@ def main():
     wind_speeds = positions[:, 0] * 0.0 + 30.0  # Simulate linearly varying mean wind speed
 
     start_time = time.time()
-    samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u",)
+    samples, frequencies = simulator.simulate_wind(positions, wind_speeds, component="u", 
+                                                   auto_batch=True, max_memory_gb=8.0)
     elapsed_time = time.time() - start_time
 
     logging.info(f"Simulation completed, elapsed time: {elapsed_time:.2f} seconds")

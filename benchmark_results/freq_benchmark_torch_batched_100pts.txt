@@ -1,0 +1,10 @@
+n_frequencies,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size
+50,0.6214,0.0113,False,None
+100,0.5944,0.0226,False,None
+200,0.6699,0.0453,False,None
+500,0.6462,0.1132,False,None
+1000,0.6367,0.2265,False,None
+2000,0.6494,0.4530,False,None
+5000,0.6665,1.1325,False,None
+8000,0.6673,1.8120,False,None
+10000,0.6843,2.2650,False,None

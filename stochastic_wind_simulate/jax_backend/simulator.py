@@ -65,6 +65,7 @@ class JaxWindSimulator(BaseWindSimulator):
         # Calculate dependent parameters
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Zero plane displacement
+        params["backend"] = "jax"
         
         return params
 

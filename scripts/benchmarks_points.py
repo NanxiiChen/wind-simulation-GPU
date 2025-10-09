@@ -11,6 +11,7 @@ import sys
 import os
 import numpy as np
 from pathlib import Path
+import multiprocessing
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -21,31 +22,74 @@ logging.basicConfig(
 )
 
 
+def run_single_case(args_dict):
+    """
+    Run a single benchmark case in a new process. Args in dict form.
+    Returns: dict with time_cost, memory_estimate, freq_batch_size, used_batching
+    """
+    import time
+    import numpy as np
+    from stochastic_wind_simulate import get_simulator
+    backend = args_dict['backend']
+    n = args_dict['n']
+    n_frequency = args_dict['n_frequency']
+    use_batching = args_dict['use_batching']
+    max_memory_gb = args_dict['max_memory_gb']
+    Z = 30.0
+    positions = np.zeros((n, 3))
+    positions[:, 0] = np.linspace(0, 1000, n)
+    positions[:, 1] = 5
+    positions[:, -1] = Z + 5
+    if backend == "jax":
+        import jax.numpy as jnp
+        positions = jnp.array(positions)
+    elif backend == "torch":
+        import torch
+        positions = torch.from_numpy(positions)
+    wind_speeds = positions[:, 0] * 0.0 + 25.0
+    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
+    simulator.update_parameters(N=n_frequency, M=2*n_frequency, T=600, w_up=1.0)
+    simulator.seed = 42 + n
+    if backend == "numpy":
+        np.random.seed(simulator.seed)
+    memory_estimate = 0.0
+    if hasattr(simulator, 'estimate_memory_requirement'):
+        memory_estimate = simulator.estimate_memory_requirement(n, n_frequency)
+    actual_batching = False
+    freq_batch_size = None
+    if use_batching and hasattr(simulator, '_should_use_batching'):
+        use_batch, _, auto_freq_batch = simulator._should_use_batching(
+            n, n_frequency, max_memory_gb, None, None, auto_batch=True)
+        actual_batching = use_batch
+        if use_batch:
+            freq_batch_size = auto_freq_batch
+    try:
+        start_time = time.time()
+        if use_batching:
+            u_samples, frequencies = simulator.simulate_wind(
+                positions, wind_speeds, component="u",
+                max_memory_gb=max_memory_gb,
+                auto_batch=True)
+        else:
+            u_samples, frequencies = simulator.simulate_wind(
+                positions, wind_speeds, component="u",
+                max_memory_gb=16.0,
+                auto_batch=True)
+        elapsed_time = time.time() - start_time
+        result = dict(time_cost=elapsed_time, memory_estimate=memory_estimate,
+                      freq_batch_size=freq_batch_size, used_batching=actual_batching)
+    except Exception as e:
+        result = dict(time_cost=float('nan'), memory_estimate=memory_estimate,
+                      freq_batch_size=freq_batch_size, used_batching=actual_batching)
+    return result
+
+
 def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0, n_frequency=3000):
     """
     Benchmark a specific backend with optional frequency batching.
-    Only frequency batching is supported.
-    
-    Args:
-        backend: Backend name ('jax', 'torch', 'numpy')
-        ns: List of sample sizes to test
-        use_batching: Whether to use frequency batching
-        max_memory_gb: Memory limit for batching
-        n_frequency: Number of frequency segments (N)
-        
-    Returns:
-        List of time costs for each sample size
+    Each case runs in a new process for cold-start isolation.
     """
     logging.info(f"Benchmarking {backend} backend with freq batching={use_batching}")
-    
-    simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
-    
-    simulator.update_parameters(
-        N=n_frequency,           # Frequency points (configurable)
-        M=2*n_frequency,         # Time points (M = 2*N)
-        T=600,                   # Reduced duration
-        w_up=1.0                 # Reduced cutoff frequency
-    )
     
     time_costs = []
     memory_estimates = []
@@ -57,170 +101,28 @@ def benchmark_backend(backend, ns, use_batching=True, max_memory_gb=2.0, n_frequ
     
     # Create output file
     batch_suffix = "batched" if use_batching else "direct"
-    output_file = results_dir / f"points_benchmark_{backend}_{batch_suffix}.txt"
+    output_file = results_dir / f"points_benchmark_{backend}_{batch_suffix}_{n_frequency}freqs.txt"
     
     with open(output_file, "w") as f:
         f.write("n_samples,time_cost(s),memory_estimate(GB),used_batching,freq_batch_size\n")
     
-    Z = 30.0  # Height (m)
-    
     for i, n in enumerate(ns):
         logging.info(f"Testing {backend} with {n} points...")
-        
-        # Clear any potential caches before each test
-        if hasattr(simulator, 'spectrum') and hasattr(simulator.spectrum, '__dict__'):
-            # Clear spectrum cache if it exists
-            for attr in list(simulator.spectrum.__dict__.keys()):
-                if 'cache' in attr.lower():
-                    delattr(simulator.spectrum, attr)
-        
-        # Reset random seed for reproducible but independent results
-        simulator.seed = 42 + i  # Different seed for each point size test
-        if backend == "numpy":
-            np.random.seed(simulator.seed)
-        
-        # Create positions
-        positions = np.zeros((n, 3))
-        positions[:, 0] = np.linspace(0, 1000, n)
-        positions[:, 1] = 5
-        positions[:, -1] = Z + 5
-        
-        # Convert to appropriate format for backend
-        if backend == "jax":
-            import jax.numpy as jnp
-            positions = jnp.array(positions)
-        elif backend == "torch":
-            import torch
-            positions = torch.from_numpy(positions)
-        elif backend == "numpy":
-            # positions is already a numpy array
-            pass
-        else:
-            raise ValueError(f"Unsupported backend: {backend}")
-        
-        wind_speeds = positions[:, 0] * 0.0 + 25.0  # Constant wind speed
-        
-        # Estimate memory requirement
-        memory_estimate = 0.0
-        if hasattr(simulator, 'estimate_memory_requirement'):
-            memory_estimate = simulator.estimate_memory_requirement(n, simulator.params["N"])
-        
-        # Let the simulator determine if batching is needed and calculate optimal batch sizes
-        actual_batching = False
-        freq_batch_size = None
-        
-        if use_batching and hasattr(simulator, '_should_use_batching'):
-            # 只关注频率分batch
-            use_batch, _, auto_freq_batch = simulator._should_use_batching(
-                n, simulator.params["N"], max_memory_gb, None, None, auto_batch=True
-            )
-            actual_batching = use_batch
-            if use_batch:
-                freq_batch_size = auto_freq_batch
-        
-        try:
-            start_time = time.time()
-            
-            if use_batching:
-                # Use auto-batching with specified memory limit
-                u_samples, frequencies = simulator.simulate_wind(
-                    positions, wind_speeds, component="u",
-                    max_memory_gb=max_memory_gb,
-                    auto_batch=True  # Let simulator decide if batching is needed
-                )
-            else:
-                # Use direct simulation with high memory limit to avoid auto-batching
-                u_samples, frequencies = simulator.simulate_wind(
-                    positions, wind_speeds, component="u",
-                    max_memory_gb=16.0,  # High limit to avoid auto-batching
-                    auto_batch=True
-                )
-            
-            elapsed_time = time.time() - start_time
-            time_costs.append(elapsed_time)
-            memory_estimates.append(memory_estimate)
-            
-            # Determine if batching was actually used by checking memory vs limit
-            if use_batching:
-                actual_batching = memory_estimate > max_memory_gb
-                if actual_batching and hasattr(simulator, 'get_optimal_batch_sizes'):
-                    # Get the optimal batch sizes that would have been used
-                    _, freq_batch_size = simulator.get_optimal_batch_sizes(
-                        n, simulator.params["N"], max_memory_gb
-                    )
-                else:
-                    freq_batch_size = None
-            else:
-                actual_batching = False
-                freq_batch_size = None
-            
-            # Store batch information
-            batch_info.append({
-                'freq_batch_size': freq_batch_size,
-                'used_batching': actual_batching
-            })
-            
-            logging.info(f"  n={n}: {elapsed_time:.4f}s, memory={memory_estimate:.2f}GB, "
-                        f"freq_batching={actual_batching}")
-            
-            # Write to file
-            with open(output_file, "a") as f:
-                f.write(f"{n},{elapsed_time:.4f},{memory_estimate:.4f},"
-                       f"{actual_batching},{freq_batch_size}\n")
-                
-            # Clear caches and force garbage collection after each test
-            if backend == "jax":
-                try:
-                    import jax
-                    jax.clear_caches()
-                except:
-                    pass
-            elif backend == "torch":
-                try:
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    # Clear PyTorch internal caches
-                    torch._C._clear_cache()
-                except:
-                    pass
-            
-            # Force Python garbage collection
-            import gc
-            gc.collect()
-                
-        except Exception as e:
-            logging.error(f"Error with {backend} backend, n={n}: {e}")
-            time_costs.append(np.nan)
-            memory_estimates.append(memory_estimate)
-            batch_info.append({
-                'freq_batch_size': freq_batch_size,
-                'used_batching': actual_batching
-            })
-            
-            # Write error to file
-            with open(output_file, "a") as f:
-                f.write(f"{n},NaN,{memory_estimate:.4f},"
-                       f"{actual_batching},{freq_batch_size}\n")
-                       
-            # Clear caches even after errors
-            if backend == "jax":
-                try:
-                    import jax
-                    jax.clear_caches()
-                except:
-                    pass
-            elif backend == "torch":
-                try:
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    torch._C._clear_cache()
-                except:
-                    pass
-            
-            import gc
-            gc.collect()
+        args_dict = dict(backend=backend, n=n, n_frequency=n_frequency,
+                        use_batching=use_batching, max_memory_gb=max_memory_gb)
+        with multiprocessing.get_context("spawn").Pool(1) as pool:
+            result = pool.apply(run_single_case, (args_dict,))
+        time_costs.append(result['time_cost'])
+        memory_estimates.append(result['memory_estimate'])
+        batch_info.append({
+            'freq_batch_size': result['freq_batch_size'],
+            'used_batching': result['used_batching']
+        })
+        logging.info(f"  n={n}: {result['time_cost']:.4f}s, memory={result['memory_estimate']:.2f}GB, "
+                    f"freq_batching={result['used_batching']}")
+        with open(output_file, "a") as f:
+            f.write(f"{n},{result['time_cost']:.4f},{result['memory_estimate']:.4f},"
+                   f"{result['used_batching']},{result['freq_batch_size']}\n")
     
     return time_costs, memory_estimates, batch_info
 

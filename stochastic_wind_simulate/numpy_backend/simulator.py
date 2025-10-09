@@ -52,6 +52,7 @@ class NumpyWindSimulator(BaseWindSimulator):
         }
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
+        params["backend"] = "numpy"
 
         return params
 

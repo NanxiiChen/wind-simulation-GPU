@@ -45,7 +45,7 @@ class BaseWindSimulator(ABC):
         S_memory = n_frequencies * n_points * n_points * dtype_size  # Real
         H_memory = n_frequencies * n_points * n_points * dtype_size * 2  # Complex
         B_memory = n_points * (n_frequencies * 2) * dtype_size * 2  # Complex, M = 2*N
-        
+
         # Additional working memory (factor of 2 for safety)
         total_bytes = (S_memory + H_memory + B_memory) * 2.0
         
@@ -76,10 +76,21 @@ class BaseWindSimulator(ABC):
         #     if freq_batch == 1:
         #         break
 
+        backend = self.params.get("backend", "numpy")
+        safety_factor = 2.0
+        if backend == "torch":
+            safety_factor = 5.0
+        elif backend == "jax":
+            safety_factor = 2.0
+        elif backend == "numpy":
+            safety_factor = 2.0
+        else:
+            raise ValueError(f"Unsupported backend: {backend}")
+
         freq_batch = min(
             freq_batch,
             int(
-                max_memory_gb * (1024**3) / ((3*n_points**2 + 4 * n_points) * 4 * 2)
+                max_memory_gb * (1024**3) / ((3*n_points**2 + 4 * n_points) * 4 * safety_factor)
             )
         )
         

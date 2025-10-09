@@ -68,6 +68,7 @@ class TorchWindSimulator(BaseWindSimulator):
         # Calculate dependent parameters
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Zero plane displacement
+        params["backend"] = "torch"
         
         return params
 
@@ -231,11 +232,11 @@ class TorchWindSimulator(BaseWindSimulator):
             return torch.matmul(H_matrix.to(torch.complex64), E)  # (n,)
 
         # Parallel computation across frequencies
-        B_non_zero = torch.stack([
-            _single_freq_amplitude(frequencies[i], phi[i, :])
-            for i in range(N_batch)
-        ])  # (N_batch, n)
-        # B_non_zero = func.vmap(_single_freq_amplitude)(frequencies, phi)  # (N_batch, n)
+        # B_non_zero = torch.stack([
+        #     _single_freq_amplitude(frequencies[i], phi[i, :])
+        #     for i in range(N_batch)
+        # ])  # (N_batch, n)
+        B_non_zero = func.vmap(_single_freq_amplitude)(frequencies, phi)  # (N_batch, n)
         
         return B_non_zero.T  # (n, N_batch)
     
