@@ -30,7 +30,7 @@ Time comparison of wind field simulation using JAX, PyTorch, and NumPy implement
 <!-- ![time_comparison](./img/time_cost_comparison.png)
 ![time_comparison_freq](./img/freq_time_cost_comparison.png) -->
 
-<img src="./img/time_cost_comparison.png" alt="Time Cost Comparison" width="600"/>
+<img src="./img/points_time_cost_comparison.png" alt="Time Cost Comparison" width="600"/>
 <img src="./img/freq_time_cost_comparison.png" alt="Frequency Time Cost Comparison" width="600"/>
 
 
