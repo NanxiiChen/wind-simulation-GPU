@@ -19,8 +19,8 @@ Key features include:
 ## Representative Results
 
 ### Benchmarks
-![Power Spectral Density](./img/wsamples-psd.png)
-![Cross-Correlation](./img/samples-cor.png)
+![Power Spectral Density](./img/validate_psd.png)
+![Spatial Correlation](./img/validate_correlation.png)
 
 
 ### Performance Comparison
