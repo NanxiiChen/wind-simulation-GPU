@@ -46,10 +46,10 @@ class NumpyWindSimulator(BaseWindSimulator):
             "w_up": 5.0,  # Cutoff frequency (Hz)
             "N": 3000,  # Number of frequency segments
             "M": 6000,  # Number of time points (M=2N)
-            "T": 600,  # Simulation duration (s)
-            "dt": 0.1,  # Time step (s)
             "U_d": 25.0,  # Design basic wind speed (m/s)
         }
+        params["T"] = params["N"] / params["w_up"]  # Total simulation time
+        params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
         params["backend"] = "numpy"

@@ -25,8 +25,22 @@ def main():
         default="jax",
         help="Choose backend library: jax or torch or numpy (default: jax)",
     )
+    arg_parser.add_argument(
+        "--n-points",
+        type=int,
+        default=100,
+        help="Number of simulation points (default: 100)",
+    )
+    arg_parser.add_argument(
+        "--n-freqs",
+        type=int,
+        default=3000,
+        help="Number of frequency components (default: 3000)",
+    )
     args = arg_parser.parse_args()
     backend = args.backend
+    N = args.n_freqs
+    n = args.n_points
     logging.info(f"Using backend: {backend}")
     simulator = get_simulator(backend=backend, key=42, spectrum_type="kaimal-nd")
 
@@ -37,12 +51,11 @@ def main():
         alpha_0=0.12,
         z_0=0.01,
         w_up=5.0,
-        N=1024,
-        M=2048
+        N=N,
+        M=N * 2
     )
 
     # Define simulation point positions and mean wind speeds
-    n = 2048  # Number of simulation points
     Z = 30.0  # Height (m)
 
     positions = np.zeros((n, 3))
