@@ -31,6 +31,7 @@ class JaxWindSimulator(BaseWindSimulator):
         self.key = random.PRNGKey(key)
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
+
     def _set_default_parameters(self) -> Dict:
         """
         Set default wind field simulation parameters.
@@ -40,33 +41,24 @@ class JaxWindSimulator(BaseWindSimulator):
                  physical constants, grid specifications, and numerical settings
         """
         params = {
-            # Physical constants
-            "K": 0.4,           # von Karman constant
-            "H_bar": 10.0,      # Average height of surrounding buildings (m)
-            "z_0": 0.05,        # Surface roughness height (m)
-            "alpha_0": 0.16,    # Surface roughness exponent
-            
-            # Coherence coefficients
-            "C_x": 16.0,        # Decay coefficient in x direction
-            "C_y": 6.0,         # Decay coefficient in y direction
-            "C_z": 10.0,        # Decay coefficient in z direction
-            
-            # Frequency domain parameters
-            "w_up": 5.0,        # Cutoff frequency (Hz)
-            "N": 3000,          # Number of frequency segments
-            "M": 6000,          # Number of time points (M = 2*N)
-            
-            # Time domain parameters
-            "T": 600,           # Simulation duration (s)
-            "dt": 0.1,          # Time step (s)
-            "U_d": 25.0,        # Design basic wind speed (m/s)
+            "K": 0.4,  # Dimensionless constant
+            "H_bar": 10.0,  # Average height of surrounding buildings (m)
+            "z_0": 0.05,  # Surface roughness height
+            "alpha_0": 0.16,  # Surface roughness exponent
+            "C_x": 16.0,  # Decay coefficient in x direction
+            "C_y": 6.0,  # Decay coefficient in y direction
+            "C_z": 10.0,  # Decay coefficient in z direction
+            "w_up": 5.0,  # Cutoff frequency (Hz)
+            "N": 3000,  # Number of frequency segments
+            "M": 6000,  # Number of time points (M=2N)
+            "U_d": 25.0,  # Design basic wind speed (m/s)
         }
-        
-        # Calculate dependent parameters
+        params["T"] = params["N"] / params["w_up"]  # Total simulation time
+        params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Zero plane displacement
-        params["backend"] = "jax"
-        
+        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
+        params["backend"] = "numpy"
+
         return params
 
     @staticmethod

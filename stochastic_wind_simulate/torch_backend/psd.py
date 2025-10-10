@@ -10,43 +10,11 @@ class WindSpectrum:
         """
         Initialize the wind spectrum.
         """
-        self.params = self._set_default_parameters()
+        self.params = {}
         self.params.update(kwargs)  # Update with any additional parameters
         
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    def _set_default_parameters(self, **kwargs) -> Dict:
-        """Set default parameters for the wind spectrum."""
-        params = {
-            "K": 0.4,  # Dimensionless constant
-            "H_bar": 10.0,  # Average height of surrounding buildings (m)
-            "z_0": 0.05,  # Surface roughness height
-            "alpha_0": 0.16, # Surface roughness exponent
-            "w_up": 5.0,  # Cutoff frequency (Hz)
-            "N": 3000,  # Number of frequency segments
-            "M": 6000,  # Number of time points (M=2N)
-            "T": 600,  # Simulation duration (s)
-            "dt": 0.1,  # Time step (s)
-            "U_d": 25.0,  # Design basic wind speed (m/s)
-        }
-        params["z_d"] = (
-            params["H_bar"] - params["z_0"] / params["K"]
-        )  # Calculate zero plane displacement
-
-        return params
-    
-    def update_parameters(self, **kwargs):
-        """Update simulation parameters."""
-        for key, value in kwargs.items():
-            if key in self.params:
-                self.params[key] = value
-
-        # Update dependent parameters
-        self.params["z_d"] = (
-            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
-        )
-        self.params.update(kwargs)  # Update with any additional parameters
 
     def _to_tensor(self, value, device=None):
         """Convert input to tensor on device."""
