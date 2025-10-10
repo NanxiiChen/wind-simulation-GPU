@@ -15,7 +15,7 @@ python scripts/benchmarks_points.py --backend numpy --max-memory 32.0 --n-freque
 Fix number of points as 100, vary number of frequencies in {100, 500, 1000, 2000, 5000, 8000, 10000}.
 
 ```bash
-python scripts/benchmarks_freq.py --backend torch --max-memory 6.0 --n-points 100
+python scripts/benchmarks_freq.py --backend jax --max-memory 6.0 --n-points 1500
 ```
 
 

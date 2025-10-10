@@ -37,10 +37,12 @@ def main():
         alpha_0=0.12,
         z_0=0.01,
         w_up=5.0,
+        N=1024,
+        M=2048
     )
 
     # Define simulation point positions and mean wind speeds
-    n = 500  # Number of simulation points
+    n = 2048  # Number of simulation points
     Z = 30.0  # Height (m)
 
     positions = np.zeros((n, 3))

@@ -1,0 +1,16 @@
+Frequency Scaling Benchmark Comparison Report
+Fixed points: 1500
+==================================================
+
+JAX Backend Results:
+------------------------------
+  Batched mode:
+    Average time: 8.5186s
+    Total time: 76.6675s
+    Max memory estimate: 503.36GB
+    Successful runs: 9
+
+
+Overall Performance Ranking:
+------------------------------
+1. jax_batched: 8.5186s average
