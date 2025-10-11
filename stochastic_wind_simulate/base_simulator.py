@@ -32,14 +32,15 @@ class BaseWindSimulator(ABC):
             "C_z": 10.0,  # Decay coefficient in z direction
             "w_up": 5.0,  # Cutoff frequency (Hz)
             "N": 3000,  # Number of frequency segments
-            "M": 6000,  # Number of time points (M=2N)
             "U_d": 25.0,  # Design basic wind speed (m/s)
         }
+        params["M"] = 2 * params["N"]  # Number of time steps
         params["T"] = params["N"] / params["w_up"]  # Total simulation time
         params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
         params["backend"] = "numpy"
+        assert params["dt"] <= 1 / (2 * params["w_up"]), "Time step dt must satisfy the Nyquist criterion."
 
         return params
 
@@ -51,11 +52,13 @@ class BaseWindSimulator(ABC):
                 params[key] = value
 
         # Update dependent parameters
+        params["M"] = 2 * params["N"]  # Number of time steps
         params["T"] = params["N"] / params["w_up"]  # Total simulation time
         params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
         params["backend"] = "numpy"
+        assert params["dt"] <= 1 / (2 * params["w_up"]), "Time step dt must satisfy the Nyquist criterion."
         self.params = params
         self.spectrum.params = self.params  # Update spectrum parameters
     
@@ -254,19 +257,3 @@ class BaseWindSimulator(ABC):
                   f"({batch_type}s {start_idx}-{end_idx-1})")
         else:
             print(f"Processing {batch_type} batch {batch_idx + 1}/{n_batches}")
-
-    def update_parameters(self, **kwargs):
-        """Update simulation parameters."""
-        for key, value in kwargs.items():
-            if key in self.params:
-                self.params[key] = value
-
-        # Update dependent parameters
-        self.params["dw"] = self.params["w_up"] / self.params["N"]
-        self.params["z_d"] = (
-            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
-        )
-        
-        # Update spectrum parameters if spectrum exists
-        if hasattr(self, 'spectrum') and hasattr(self.spectrum, 'params'):
-            self.spectrum.params = self.params
