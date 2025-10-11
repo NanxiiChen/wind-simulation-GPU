@@ -104,6 +104,23 @@ class KaimalWindSpectrumNonDimensional(WindSpectrumNonDimensional):
         return (u_star**2 / n) * (200 * f / ((1 + 50 * f) ** (5 / 3)))
 
 
+class DavenportWindSpectrumNonDimensional(WindSpectrumNonDimensional):
+    """Davenport wind spectrum class."""
+
+    def __init__(self, **kwargs):
+        """
+        Initialize the Davenport wind spectrum.
+        """
+        super().__init__(**kwargs)
+
+    def calculate_power_spectrum_u(self, n, u_star, f):
+        """Calculate along-wind fluctuating wind power spectral density S_u(n)."""
+        n = self._to_tensor(n)
+        u_star = self._to_tensor(u_star)
+        f = self._to_tensor(f)
+        return (u_star**2 / n) * (4 * f**2 / ((1 + f**2) ** (4 / 3)))
+
+
 class PanofskyWindSpectrumNonDimensional(WindSpectrumNonDimensional):
     """Panofsky wind spectrum class."""
 
