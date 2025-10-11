@@ -27,47 +27,6 @@ class NumpyWindSimulator(BaseWindSimulator):
         np.random.seed(key)
         self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
 
-    def _set_default_parameters(self) -> Dict:
-        """
-        Set default wind field simulation parameters.
-        
-        Returns:
-            Dict: Dictionary containing default simulation parameters including
-                 physical constants, grid specifications, and numerical settings
-        """
-        params = {
-            "K": 0.4,  # Dimensionless constant
-            "H_bar": 10.0,  # Average height of surrounding buildings (m)
-            "z_0": 0.05,  # Surface roughness height
-            "alpha_0": 0.16,  # Surface roughness exponent
-            "C_x": 16.0,  # Decay coefficient in x direction
-            "C_y": 6.0,  # Decay coefficient in y direction
-            "C_z": 10.0,  # Decay coefficient in z direction
-            "w_up": 5.0,  # Cutoff frequency (Hz)
-            "N": 3000,  # Number of frequency segments
-            "M": 6000,  # Number of time points (M=2N)
-            "U_d": 25.0,  # Design basic wind speed (m/s)
-        }
-        params["T"] = params["N"] / params["w_up"]  # Total simulation time
-        params["dt"] = params["T"] / params["M"]  # Time step
-        params["dw"] = params["w_up"] / params["N"]  # Frequency increment
-        params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
-        params["backend"] = "numpy"
-
-        return params
-
-    def update_parameters(self, **kwargs):
-        """Update simulation parameters."""
-        for key, value in kwargs.items():
-            if key in self.params:
-                self.params[key] = value
-
-        # Update dependent parameters
-        self.params["dw"] = self.params["w_up"] / self.params["N"]
-        self.params["z_d"] = (
-            self.params["H_bar"] - self.params["z_0"] / self.params["K"]
-        )
-        self.spectrum.params = self.params  # Update spectrum parameters
 
     @staticmethod
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_zi, U_zj, C_x, C_y, C_z):
