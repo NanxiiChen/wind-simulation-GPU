@@ -29,7 +29,12 @@ class JaxWindSimulator(BaseWindSimulator):
         """
         super().__init__()
         self.key = random.PRNGKey(key)
-        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
+        if isinstance(spectrum_type, str):
+            self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
+        elif isinstance(spectrum_type, type):
+            self.spectrum = spectrum_type(**self.params)
+        else:
+            raise ValueError("spectrum_type must be a string or a class type.")
 
 
     @staticmethod
