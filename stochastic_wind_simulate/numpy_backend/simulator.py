@@ -25,9 +25,14 @@ class NumpyWindSimulator(BaseWindSimulator):
         super().__init__()  # Initialize base class
         self.seed = key
         np.random.seed(key)
-        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
-
-
+        if isinstance(spectrum_type, str):
+            self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
+        elif isinstance(spectrum_type, type):
+            self.spectrum = spectrum_type(**self.params)
+        else:
+            raise ValueError("spectrum_type must be a string or a class type.")
+        
+        
     @staticmethod
     def calculate_coherence(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_zi, U_zj, C_x, C_y, C_z):
         """Calculate spatial correlation function Coh."""

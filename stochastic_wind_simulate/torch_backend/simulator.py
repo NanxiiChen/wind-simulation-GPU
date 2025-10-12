@@ -32,8 +32,13 @@ class TorchWindSimulator(BaseWindSimulator):
         
         # Set computing device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
-
+        if isinstance(spectrum_type, str):
+            self.spectrum = get_spectrum_class(spectrum_type)(**self.params)
+        elif isinstance(spectrum_type, type):
+            self.spectrum = spectrum_type(**self.params)
+        else:
+            raise ValueError("spectrum_type must be a string or a class type.")
+        
 
     def _to_tensor(self, value, device=None):
         """
