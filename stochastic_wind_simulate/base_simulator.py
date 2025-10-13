@@ -47,9 +47,10 @@ class BaseWindSimulator(ABC):
     def update_parameters(self, **kwargs):
         """Update simulation parameters."""
         params = self.params.copy()
-        for key, value in kwargs.items():
-            if key in self.params:
-                params[key] = value
+        # for key, value in kwargs.items():
+        #     if key in self.params:
+        #         params[key] = value
+        params.update(kwargs)
 
         # Update dependent parameters
         params["M"] = 2 * params["N"]  # Number of time steps
