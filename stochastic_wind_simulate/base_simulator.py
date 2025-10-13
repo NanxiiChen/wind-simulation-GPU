@@ -32,6 +32,7 @@ class BaseWindSimulator(ABC):
             "C_z": 10.0,  # Decay coefficient in z direction
             "w_up": 5.0,  # Cutoff frequency (Hz)
             "N": 3000,  # Number of frequency segments
+            "z_max": 450.0,  # Maximum height for mean wind speed calculation (m)
             "U_d": 25.0,  # Design basic wind speed (m/s)
         }
         params["M"] = 2 * params["N"]  # Number of time steps
@@ -39,7 +40,6 @@ class BaseWindSimulator(ABC):
         params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
-        params["backend"] = "numpy"
         assert params["dt"] <= 1 / (2 * params["w_up"]), "Time step dt must satisfy the Nyquist criterion."
 
         return params
@@ -57,7 +57,6 @@ class BaseWindSimulator(ABC):
         params["dt"] = params["T"] / params["M"]  # Time step
         params["dw"] = params["w_up"] / params["N"]  # Frequency increment
         params["z_d"] = params["H_bar"] - params["z_0"] / params["K"]  # Calculate zero plane displacement
-        params["backend"] = "numpy"
         assert params["dt"] <= 1 / (2 * params["w_up"]), "Time step dt must satisfy the Nyquist criterion."
         self.params = params
         self.spectrum.params = self.params  # Update spectrum parameters

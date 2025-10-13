@@ -31,6 +31,7 @@ class NumpyWindSimulator(BaseWindSimulator):
             self.spectrum = spectrum_type(**self.params)
         else:
             raise ValueError("spectrum_type must be a string or a class type.")
+        self.params["backend"] = "numpy"
         
         
     @staticmethod
