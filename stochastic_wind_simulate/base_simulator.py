@@ -33,7 +33,7 @@ class BaseWindSimulator(ABC):
             "w_up": 5.0,  # Cutoff frequency (Hz)
             "N": 3000,  # Number of frequency segments
             "z_max": 450.0,  # Maximum height for mean wind speed calculation (m)
-            "U_d": 25.0,  # Design basic wind speed (m/s)
+            "U_d": 25.0,  # Reference basic wind speed (m/s), same as `U_r` in the paper
         }
         params["M"] = 2 * params["N"]  # Number of time steps
         params["T"] = params["N"] / params["w_up"]  # Total simulation time
