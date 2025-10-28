@@ -1,26 +1,40 @@
-# Stochastic Wind Field Simulation
+# GPU-Accelerated Stochastic Wind Field Simulation
 
-
-A GPU-accelerated framework for stochastic wind field simulation based on Shinozuka's harmonic synthesis method, providing significant performance improvements for wind engineering applications.
+A high-performance framework for stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
 ## Overview
 
+Stochastic wind field simulation is extensively utilized in civil and wind engineering for analyzing the dynamic responses of bridges, buildings, and other structures under wind loading. Traditional wind field simulation methods are constrained by computational efficiency, limiting their applicability to large-scale engineering problems. This library implements the classical Shinozuka harmonic synthesis method enhanced with modern GPU parallel computing techniques to achieve efficient stochastic wind field generation.
 
-This library implements the stochastic wind field simulation method widely used in civil engineering and wind engineering for analyzing structural responses of bridges, buildings, and other structures under wind loads. By leveraging GPU acceleration through JAX and PyTorch backends, as well as providing a NumPy backend for CPU computations, we achieve orders of magnitude speedup compared to traditional implementations.
+### Key Contributions
 
-Key features include:
-- Triple backend support (JAX, PyTorch, and NumPy) for maximum flexibility
-- Full GPU acceleration for JAX and PyTorch backends
-- Multiple wind spectrum models (Kaimal, Teunissen, Panofsky) with convenient custom spectrum interface
-- Modular spectrum architecture allowing easy implementation of custom wind spectrum models
-- Visualization tools for spectral analysis and correlation validation
-- Configurable simulation parameters
+**Efficient Parallel Computing Architecture:**
+A dual-level parallelization strategy is employed, parallelizing computation across both frequency and spatial point dimensions to fully exploit GPU computational resources. Compared to traditional CPU implementations, this approach achieves orders of magnitude performance improvements in large-scale simulation scenarios.
 
-## Representative Results
+**Multi-Backend Support:**
+- **JAX Backend** (Recommended): Features XLA compilation optimization for superior performance
+- **PyTorch Backend**: Excellent ecosystem compatibility with gradient computation and deep learning integration
+- **NumPy Backend**: CPU computation support ensuring algorithm generality and verifiability
 
-### Benchmarks
-![Power Spectral Density](./img/validate_psd.png)
-![Spatial Correlation](./img/validate_correlation.png)
+**Comprehensive Wind Spectrum Models:**
+Built-in classical wind spectrum models (Kaimal, Teunissen, Panofsky) with support for user-defined spectrum functions to meet diverse engineering application requirements.
+
+**Engineering Application Validation:**
+The algorithm has been validated in typical engineering scenarios including long-span bridges, high-rise buildings, and offshore wind turbines, with simulation results showing excellent agreement between power spectral density and spatial correlation with theoretical values.
+
+### Technical Features
+
+- 🚀 **Massive-Scale Simulation Capability**: Supports simultaneous simulation of tens of thousands of spatial points and thousands of frequency components
+- ⚡ **Ultimate Performance Optimization**: GPU acceleration achieves 1000+ times speedup compared to CPU implementations
+- 🔧 **Modular Architecture Design**: Easily extensible wind spectrum models and visualization components
+- 📊 **Comprehensive Validation Tools**: Built-in power spectral density and spatial correlation validation functions
+- 🎯 **Engineering-Oriented Application**: Specially optimized parameter configurations suitable for practical engineering projects
+
+## Validation Results
+
+### Algorithm Validation
+![Power Spectral Density Validation](./img/validate_psd_norm.png)
+![Spatial Correlation Validation](./img/validate_correlation.png)
 
 
 ### Performance Comparison
@@ -47,38 +61,6 @@ Time comparison of wind field simulation using JAX, PyTorch, and NumPy implement
 #### Offshore Wind Turbine
 <!-- ![Offshore Wind Turbine](./img/offshore_wind_simulation.png) -->
 <img src="./img/offshore_wind_simulation_norm.png" alt="Offshore Wind Turbine Simulation" width="600"/>
-
-
-
-## Installation
-
-### Prerequisites
-
-Choose one of the following backends:
-
-**JAX (Recommended for best performance):**
-```bash
-pip install jax jaxlib
-# For GPU support:
-pip install jax[cuda12_pip] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-```
-
-**PyTorch:**
-```bash
-pip install torch
-# For GPU support, visit: https://pytorch.org/get-started/locally/
-```
-
-**NumPy (CPU only):**
-```bash
-pip install numpy scipy
-```
-
-### Common Dependencies
-
-```bash
-pip install matplotlib scipy
-```
 
 
 ## Quick Start

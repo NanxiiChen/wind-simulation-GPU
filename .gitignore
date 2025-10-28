@@ -10,6 +10,7 @@ demo.ipynb
 *.xlsx
 data/
 .DS_Store
+examples/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
