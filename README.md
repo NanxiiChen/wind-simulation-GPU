@@ -70,9 +70,9 @@ Time comparison of wind field simulation using JAX, PyTorch, and NumPy implement
 This library requires either JAX, PyTorch, or NumPy to be installed, and can run on CPU or GPU depending on the backend specified. The recommended backend is JAX for its superior performance, especially for vectorized operations.
 
 ```bash
-python examples/basic_usage.py --backend "jax"    # JAX backend (recommended)
-python examples/basic_usage.py --backend "torch"  # PyTorch backend  
-python examples/basic_usage.py --backend "numpy"  # NumPy backend
+python scripts/basic_usage.py --backend "jax"    # JAX backend (recommended)
+python scripts/basic_usage.py --backend "torch"  # PyTorch backend  
+python scripts/basic_usage.py --backend "numpy"  # NumPy backend
 ```
 
 ### Example Code
