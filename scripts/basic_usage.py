@@ -94,7 +94,7 @@ def main():
         jnp.save("samples_jax.npy", samples)
     elif backend == "torch":
         import torch
-        np.save("samples_torch.npy", samples)
+        np.save("samples_torch.npy", samples.cpu().numpy())
     elif backend == "numpy":
         np.save("samples_numpy.npy", samples)
     else:
