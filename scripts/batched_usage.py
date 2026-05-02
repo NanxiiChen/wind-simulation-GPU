@@ -1,9 +1,8 @@
-import sys
+
 import os
 import time
 import argparse
 import logging
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from stochastic_wind_simulate import get_simulator, get_visualizer

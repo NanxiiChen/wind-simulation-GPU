@@ -7,14 +7,11 @@ Modified from benchmarks_points.py to test frequency scaling.
 import time
 import logging
 import argparse
-import sys
-import os
 import numpy as np
 from pathlib import Path
 import multiprocessing
 import json
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stochastic_wind_simulate import get_simulator
 
@@ -30,7 +27,7 @@ def run_single_case(args_dict):
     """
     import time
     import numpy as np
-    from stochastic_wind_simulate import get_simulator
+    from src.stochastic_wind_simulate import get_simulator
     backend = args_dict['backend']
     N = args_dict['N']
     n_points = args_dict['n_points']
