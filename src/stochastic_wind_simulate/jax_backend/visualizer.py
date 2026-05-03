@@ -4,6 +4,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import tkinter as tk
 from jax import random, vmap
 
 from .simulator import JaxWindSimulator
@@ -35,6 +36,25 @@ class JaxWindVisualizer:
         """
         self.key = random.PRNGKey(key)
         self.simulator = simulator if simulator else JaxWindSimulator(key)
+
+    @staticmethod
+    def _prepare_tk_backend():
+        """Normalize broken Tk scaling values before the first interactive figure."""
+        if "tkagg" not in plt.get_backend().lower():
+            return
+
+        root = tk._default_root
+        if root is None:
+            root = tk.Tk()
+            root.withdraw()
+
+        scaling = float(root.tk.call("tk", "scaling"))
+        if scaling < 0.5:
+            root.tk.call("tk", "scaling", 96.0 / 72.0)
+
+    def _create_subplots(self, *args, **kwargs):
+        self._prepare_tk_backend()
+        return plt.subplots(*args, **kwargs)
 
 
     def plot_psd(
@@ -87,7 +107,7 @@ class JaxWindVisualizer:
             in_axes=(0, None, None),
         )(frequencies_theory, Zs, component)
 
-        fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
+        fig, axes = self._create_subplots(nrows=nrow, ncols=ncol, figsize=(15, 5 * nrow))
         axes = axes.flatten() if nrow > 1 else [axes]
         for idx, i in enumerate(indices):
             ax = axes[idx]
@@ -276,7 +296,7 @@ class JaxWindVisualizer:
         theo_lags = jnp.arange(-M // 2, M // 2)
         theo_lag_times = theo_lags * dt
 
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = self._create_subplots(figsize=(12, 8))
         mid = len(correlation) // 2
         range_points = kwargs.get("range_points", len(theo_lag_times) // 2)
         plot_corr = correlation[mid - range_points : mid + range_points + 1]

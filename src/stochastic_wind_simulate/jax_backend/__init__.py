@@ -1,2 +1,3 @@
 from .simulator import JaxWindSimulator
+from .simulator_nonstationary import JaxNonstationaryWindSimulator
 from .visualizer import JaxWindVisualizer
