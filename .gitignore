@@ -12,6 +12,7 @@ data/
 .DS_Store
 examples/
 references/
+*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

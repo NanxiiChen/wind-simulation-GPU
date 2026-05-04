@@ -10,11 +10,63 @@ from .simulator import JaxWindSimulator
 class JaxNonstationaryWindSimulator(JaxWindSimulator):
     """JAX nonstationary wind simulator with evolutionary PSD support."""
 
-    def _calculate_evolutional_power_spectrum(self, freq, heights, mean_wind_speeds, component):
-        """Evaluate the spectrum using the instantaneous mean wind speeds."""
+    def _calculate_evolutional_mean_wind_speeds(
+        self,
+        wind_speeds,
+        time_value,
+        total_time,
+        modulation_amplitude=0.2,
+        modulation_values=None,
+        time_index=None,
+    ):
+        """Build the instantaneous mean wind speeds for the current time."""
+        if modulation_values is None:
+            modulation = 1.0 + modulation_amplitude * jnp.sin(2 * jnp.pi * time_value / total_time)
+        else:
+            if time_index is None:
+                raise ValueError("time_index is required when modulation_values is provided")
+            modulation = modulation_values[time_index]
+        return wind_speeds * modulation
+
+    def _calculate_evolutional_power_spectrum(
+        self,
+        freq,
+        heights,
+        wind_speeds,
+        component,
+        time_value,
+        total_time,
+        modulation_amplitude=0.2,
+        modulation_values=None,
+        time_index=None,
+        evolution_psd_generator=None,
+    ):
+        """Evaluate the evolutional PSD at one time-frequency slice."""
+        if evolution_psd_generator is not None:
+            psd_values = evolution_psd_generator(
+                freq=freq,
+                heights=heights,
+                wind_speeds=wind_speeds,
+                component=component,
+                time_value=time_value,
+                time_index=time_index,
+                total_time=total_time,
+                simulator=self,
+            )
+            return jnp.asarray(psd_values, dtype=jnp.float32)
+
         spectrum_function = getattr(self.spectrum, f"calculate_power_spectrum_{component}", None)
         if spectrum_function is None:
             raise ValueError(f"Unsupported component: {component}.")
+
+        mean_wind_speeds = self._calculate_evolutional_mean_wind_speeds(
+            wind_speeds,
+            time_value,
+            total_time,
+            modulation_amplitude=modulation_amplitude,
+            modulation_values=modulation_values,
+            time_index=time_index,
+        )
 
         u_stars = self.spectrum.calculate_friction_velocity(
             heights,
@@ -94,6 +146,7 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
     ):
         """Simulate nonstationary wind using selectable execution modes."""
         modulation_values = kwargs.pop("modulation_values", None)
+        evolution_psd_generator = kwargs.pop("evolution_psd_generator", None)
         valid_modes = {"freq-for", "full-vmap", "chunked-vmap"}
         if mode not in valid_modes:
             raise ValueError(f"Unsupported nonstationary mode: {mode}. Expected one of {sorted(valid_modes)}")
@@ -112,13 +165,10 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
 
         frequencies = self.calculate_simulation_frequency(N, dw)
         times = jnp.arange(M) * dt
-        if modulation_values is None:
-            modulation = 1.0 + modulation_amplitude * jnp.sin(2 * jnp.pi * times / total_time)
-        else:
-            modulation = jnp.asarray(modulation_values)
-            if modulation.shape != (M,):
-                raise ValueError(f"modulation_values must have shape ({M},), got {modulation.shape}")
-        U_t = wind_speeds[None, :] * modulation[:, None]
+        if modulation_values is not None:
+            modulation_values = jnp.asarray(modulation_values, dtype=jnp.float32)
+            if modulation_values.shape != (M,):
+                raise ValueError(f"modulation_values must have shape ({M},), got {modulation_values.shape}")
 
         x_i, x_j = positions[:, 0:1], positions[:, 0:1].T
         y_i, y_j = positions[:, 1:2], positions[:, 1:2].T
@@ -130,17 +180,35 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
         identity = jnp.eye(n, dtype=jnp.float32)
 
         @jit
-        def _compute_single_frequency(freq_l, time_chunk, U_chunk, phi_l):
+        def _compute_single_frequency(freq_l, time_chunk, time_indices, phi_l):
             phase_vector = jnp.exp(1j * phi_l)
 
-            def _single_time(time_m, U_tm):
+            def _single_time(time_idx, time_m):
                 s_values = self._calculate_evolutional_power_spectrum(
-                    freq_l, positions[:, 2], U_tm, component
+                    freq_l,
+                    positions[:, 2],
+                    wind_speeds,
+                    component,
+                    time_value=time_m,
+                    total_time=total_time,
+                    modulation_amplitude=modulation_amplitude,
+                    modulation_values=modulation_values,
+                    time_index=time_idx,
+                    evolution_psd_generator=evolution_psd_generator,
                 )
+                s_values = jnp.maximum(s_values, 0.0)
                 s_i, s_j = s_values[:, None], s_values[None, :]
 
-                U_i = U_tm[:, None]
-                U_j = U_tm[None, :]
+                mean_wind_speeds = self._calculate_evolutional_mean_wind_speeds(
+                    wind_speeds,
+                    time_m,
+                    total_time,
+                    modulation_amplitude=modulation_amplitude,
+                    modulation_values=modulation_values,
+                    time_index=time_idx,
+                )
+                U_i = mean_wind_speeds[:, None]
+                U_j = mean_wind_speeds[None, :]
 
                 coherence = JaxNonstationaryWindSimulator.calculate_coherence(
                     x_i, x_j, y_i, y_j, z_i, z_j, freq_l, U_i, U_j,
@@ -148,10 +216,11 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
                 )
 
                 csd_matrix = JaxNonstationaryWindSimulator.calculate_cross_spectrum(s_i, s_j, coherence)
+                csd_matrix = 0.5 * (csd_matrix + csd_matrix.T)
                 H_matrix = cholesky(csd_matrix + identity * 1e-12, lower=True)
                 return jnp.matmul(H_matrix, phase_vector) * jnp.exp(1j * freq_l * time_m)
 
-            return vmap(_single_time, in_axes=(0, 0))(time_chunk, U_chunk)
+            return vmap(_single_time, in_axes=(0, 0))(time_indices, time_chunk)
 
         estimated_memory = self.estimate_nonstationary_memory_requirement(n, N, M)
         use_batching = False
@@ -217,11 +286,15 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
             print("Nonstationary full-vmap fits in memory; running without chunking")
 
         @jit
-        def _compute_frequency_time_chunk(freq_chunk, time_chunk, U_chunk, phi_chunk):
-            def _single_freq(freq_l, phi_l):
-                return _compute_single_frequency(freq_l, time_chunk, U_chunk, phi_l)
-
-            return vmap(_single_freq, in_axes=(0, 0))(freq_chunk, phi_chunk)
+        def _compute_frequency_time_chunk(freq_chunk, time_chunk, time_indices, phi_chunk):
+            return vmap(
+                lambda freq_l, phi_l: _compute_single_frequency(
+                    freq_l,
+                    time_chunk,
+                    time_indices,
+                    phi_l,
+                )
+            )(freq_chunk, phi_chunk)
 
         overall_start = time.time()
         first_chunk_elapsed = None
@@ -236,7 +309,7 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
             for time_batch_idx in range(n_time_batches):
                 start_time_idx, end_time_idx = self._get_batch_range(time_batch_idx, time_batch_size, M)
                 time_chunk = times[start_time_idx:end_time_idx]
-                U_chunk = U_t[start_time_idx:end_time_idx]
+                time_indices = jnp.arange(start_time_idx, end_time_idx)
 
                 if mode == "freq-for":
                     chunk_sum = jnp.zeros((time_chunk.shape[0], n), dtype=jnp.complex64)
@@ -244,14 +317,14 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
                         chunk_sum = chunk_sum + _compute_single_frequency(
                             freq_chunk[freq_idx],
                             time_chunk,
-                            U_chunk,
+                            time_indices,
                             phi_chunk[freq_idx],
                         )
                 else:
                     chunk_result = _compute_frequency_time_chunk(
                         freq_chunk,
                         time_chunk,
-                        U_chunk,
+                        time_indices,
                         phi_chunk,
                     )
                     chunk_sum = jnp.sum(chunk_result, axis=0)
@@ -274,7 +347,7 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
 
                 chunk_counter += 1
 
-        wind_samples = 2.0 * jnp.sqrt(dw) * jnp.real(V_accum)
+        wind_samples = jnp.sqrt(2.0 * dw) * jnp.real(V_accum)
         wind_samples = jnp.asarray(wind_samples.T, dtype=jnp.float32)
         wind_samples.block_until_ready()
 
