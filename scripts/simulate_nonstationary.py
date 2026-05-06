@@ -1,3 +1,6 @@
+# import os
+# os.environ["JAX_PLATFORMS"] = "cpu"
+# os.environ["OPENBLAS_NUM_THREADS"] = "24"
 import argparse
 import csv
 import logging

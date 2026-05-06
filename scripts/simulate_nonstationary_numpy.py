@@ -45,6 +45,13 @@ def main():
         choices=["freq-for", "full-vmap", "chunked-vmap"],
         help="Nonstationary execution mode",
     )
+    parser.add_argument(
+        "--memory-mode",
+        type=str,
+        default="auto",
+        choices=["auto", "balanced", "high"],
+        help="Kernel memory strategy for NumPy nonstationary simulation",
+    )
     parser.add_argument("--output-file", type=str, default=None, help="Optional CSV output path under benchmark_results")
     parser.add_argument("--disable-auto-batch", action="store_true", help="Disable nonstationary auto chunking")
     args = parser.parse_args()
@@ -121,6 +128,7 @@ def main():
                     freq_batch_size=args.freq_batch_size,
                     time_batch_size=args.time_batch_size,
                     auto_batch=not args.disable_auto_batch,
+                    memory_mode=args.memory_mode,
                 )
                 elapsed = time.time() - start_time
 

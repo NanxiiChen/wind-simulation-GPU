@@ -13,6 +13,7 @@ data/
 examples/
 references/
 *.png
+src/stochastic_wind_simulate/jax_backend/simulator_nonstationary_serial_compare.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
