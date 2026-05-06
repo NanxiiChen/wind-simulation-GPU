@@ -1,2 +1,3 @@
 from .simulator import NumpyWindSimulator
+from .simulator_nonstationary import NumpyNonstationaryWindSimulator
 from .visualizer import NumpyWindVisualizer
