@@ -218,7 +218,7 @@ class JaxNonstationaryWindSimulator(JaxWindSimulator):
                 csd_matrix = JaxNonstationaryWindSimulator.calculate_cross_spectrum(s_i, s_j, coherence)
                 csd_matrix = 0.5 * (csd_matrix + csd_matrix.T)
                 H_matrix = cholesky(csd_matrix + identity * 1e-12, lower=True)
-                return jnp.matmul(H_matrix, phase_vector) * jnp.exp(1j * freq_l * time_m)
+                return jnp.matmul(H_matrix, phase_vector) * jnp.exp(1j * 2.0 * jnp.pi * freq_l * time_m)
 
             return vmap(_single_time, in_axes=(0, 0))(time_indices, time_chunk)
 

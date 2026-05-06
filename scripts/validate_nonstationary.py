@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 
 
-def build_positions(n_points, height=35.0):
+def build_positions(n_points, height=10.0):
     positions = np.zeros((n_points, 3), dtype=np.float32)
     positions[:, 0] = np.linspace(0.0, 1000.0, n_points)
     positions[:, 1] = 5.0
@@ -134,6 +134,20 @@ def average_target_over_frequency_bands(target_freqs, target_psd, estimate_freqs
     return averaged
 
 
+def compute_window_mean_response(frequencies, dt, window_size):
+    normalized_frequency = np.asarray(frequencies, dtype=np.float64) * dt
+    kernel = np.exp(-1j * np.pi * (window_size - 1) * normalized_frequency)
+    kernel = kernel * window_size * (np.sinc(window_size * normalized_frequency) / np.sinc(normalized_frequency))
+    kernel[np.isclose(normalized_frequency, 0.0)] = float(window_size) + 0.0j
+    return np.abs(kernel / window_size) ** 2
+
+
+def compute_target_windowed_variance(target_freqs, target_psd, dt, window_size):
+    mean_response = compute_window_mean_response(target_freqs, dt, window_size)
+    variance_response = 1.0 - mean_response
+    return np.trapezoid(target_psd * variance_response[None, :], target_freqs, axis=1)
+
+
 def compute_psd_error_metrics(estimated_psd, target_psd, skip_low_freq_bins=1):
     if skip_low_freq_bins < 0 or skip_low_freq_bins >= estimated_psd.shape[0]:
         raise ValueError("skip_low_freq_bins must be in [0, n_freq_bins - 1)")
@@ -192,19 +206,63 @@ def interpolate_envelope_to_signal_times(signal_times, envelope_times, envelope_
     return np.interp(signal_times, envelope_times, envelope_values)
 
 
+def select_snapshot_indices(window_times, snapshot_count, snapshot_times=None):
+    if window_times.size == 0:
+        raise ValueError("window_times must not be empty")
+
+    if snapshot_times:
+        selected = []
+        for time_value in snapshot_times:
+            nearest_index = int(np.argmin(np.abs(window_times - time_value)))
+            selected.append(nearest_index)
+        return sorted(set(selected))
+
+    snapshot_count = max(1, min(int(snapshot_count), int(window_times.size)))
+    if snapshot_count == 1:
+        return [int(window_times.size // 2)]
+
+    raw_indices = np.linspace(0, window_times.size - 1, snapshot_count)
+    return sorted(set(int(round(index)) for index in raw_indices))
+
+
+def sample_theoretical_psd_at_times(target_psd, target_times, snapshot_times):
+    selected_spectra = []
+    for time_value in snapshot_times:
+        nearest_index = int(np.argmin(np.abs(target_times - time_value)))
+        selected_spectra.append(target_psd[nearest_index])
+    return np.stack(selected_spectra, axis=0)
+
+
 def plot_validation(
     estimate_times,
     variance_estimate,
     variance_target,
     sample_times,
     sample_signal,
+    estimate_freqs,
+    estimated_psd,
+    theoretical_psd_snapshots,
+    snapshot_times,
+    skip_low_freq_bins,
     output_prefix,
     show,
 ):
     if not show and plt.get_backend().lower() != "agg":
         plt.switch_backend("Agg")
 
-    fig, (variance_axis, time_axis) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+    snapshot_count = len(snapshot_times)
+    snapshot_cols = min(2, snapshot_count)
+    snapshot_rows = int(np.ceil(snapshot_count / snapshot_cols))
+    fig = plt.figure(figsize=(15, 10 + 3 * max(0, snapshot_rows - 1)))
+    grid = fig.add_gridspec(2 + snapshot_rows, 2)
+    variance_axis = fig.add_subplot(grid[0, :])
+    time_axis = fig.add_subplot(grid[1, :], sharex=variance_axis)
+
+    snapshot_axes = []
+    for snapshot_idx in range(snapshot_count):
+        row_offset = 2 + snapshot_idx // snapshot_cols
+        col_index = snapshot_idx % snapshot_cols
+        snapshot_axes.append(fig.add_subplot(grid[row_offset, col_index]))
 
     variance_axis.plot(estimate_times, variance_estimate, color="tab:blue", linewidth=1.8, label="Estimated local variance")
     variance_axis.plot(estimate_times, variance_target, "--", color="tab:red", linewidth=2.0, label="Target local variance")
@@ -212,6 +270,8 @@ def plot_validation(
     variance_axis.set_ylabel("Variance")
     variance_axis.grid(True)
     variance_axis.legend()
+    for time_value in snapshot_times:
+        variance_axis.axvline(time_value, color="0.4", linestyle=":", linewidth=0.9, alpha=0.8)
 
     estimated_std = np.sqrt(np.maximum(variance_estimate, 0.0))
     target_std = np.sqrt(np.maximum(variance_target, 0.0))
@@ -229,6 +289,35 @@ def plot_validation(
     time_axis.set_ylabel("Wind speed")
     time_axis.grid(True)
     time_axis.legend(ncol=2, fontsize=9)
+    for time_value in snapshot_times:
+        time_axis.axvline(time_value, color="0.4", linestyle=":", linewidth=0.9, alpha=0.8)
+
+    for snapshot_idx, axis in enumerate(snapshot_axes):
+        plot_slice = slice(skip_low_freq_bins, None)
+        axis.plot(
+            estimate_freqs[plot_slice],
+            estimated_psd[plot_slice, snapshot_idx],
+            color="tab:blue",
+            linewidth=1.8,
+            label="Simulated window PSD",
+        )
+        axis.plot(
+            estimate_freqs[plot_slice],
+            theoretical_psd_snapshots[snapshot_idx, plot_slice],
+            "--",
+            color="tab:red",
+            linewidth=2.0,
+            label="Theoretical current PSD",
+        )
+        axis.set_title(f"PSD at t = {snapshot_times[snapshot_idx]:.2f} s")
+        axis.set_xlabel("Frequency (Hz)")
+        axis.set_ylabel("PSD")
+        axis.set_yscale("log")
+        axis.grid(True)
+        axis.legend(fontsize=9)
+
+    for axis in snapshot_axes[snapshot_count:]:
+        axis.axis("off")
 
     fig.tight_layout()
     figure_path = output_prefix.with_suffix(".png")
@@ -242,12 +331,12 @@ def plot_validation(
 
 def main():
     parser = argparse.ArgumentParser(description="Validate JAX nonstationary wind simulation against target evolutional PSD")
-    parser.add_argument("--n-points", type=int, default=20, help="Number of spatial points")
-    parser.add_argument("--n-freqs", type=int, default=256, help="Number of frequency components")
-    parser.add_argument("--n-realizations", type=int, default=16, help="Number of realizations for ensemble averaging")
+    parser.add_argument("--n-points", type=int, default=100, help="Number of spatial points")
+    parser.add_argument("--n-freqs", type=int, default=1024, help="Number of frequency components")
+    parser.add_argument("--n-realizations", type=int, default=32, help="Number of realizations for ensemble averaging")
     parser.add_argument("--point-index", type=int, default=0, help="Spatial point index to validate")
-    parser.add_argument("--window-size", type=int, default=128, help="Window size for local spectrum estimation")
-    parser.add_argument("--overlap", type=int, default=96, help="Overlap for local spectrum estimation")
+    parser.add_argument("--window-size", type=int, default=64, help="Window size for local spectrum estimation")
+    parser.add_argument("--overlap", type=int, default=50, help="Overlap for local spectrum estimation")
     parser.add_argument("--w-up", type=float, default=5.0, help="Cutoff frequency")
     parser.add_argument("--component", type=str, default="u", choices=["u", "w"], help="Wind component")
     parser.add_argument("--mode", type=str, default="chunked-vmap", choices=["freq-for", "full-vmap", "chunked-vmap"], help="Execution mode")
@@ -257,6 +346,8 @@ def main():
     parser.add_argument("--modulation-amplitude", type=float, default=0.2, help="Sinusoidal modulation amplitude")
     parser.add_argument("--skip-low-freq-bins", type=int, default=1, help="Number of lowest frequency bins to exclude from PSD error metrics")
     parser.add_argument("--variance-low-freq-bins", type=int, default=2, help="Number of lowest frequency bins to exclude when deriving target local variance")
+    parser.add_argument("--psd-snapshot-count", type=int, default=4, help="Number of representative times to plot for PSD comparison")
+    parser.add_argument("--psd-snapshot-times", type=float, nargs="*", default=None, help="Explicit times in seconds for PSD comparison snapshots")
     parser.add_argument("--show", action="store_true", help="Display plots interactively")
     args = parser.parse_args()
 
@@ -307,7 +398,6 @@ def main():
             time_batch_size=args.time_batch_size,
             auto_batch=True,
         )
-        print(samples.shape)
         signal = np.asarray(samples[args.point_index])
         if representative_signal is None:
             representative_signal = signal.copy()
@@ -327,10 +417,16 @@ def main():
     target_psd_windowed = average_target_over_windows(point_target_psd, times, estimate_times, dt, args.window_size)
     target_psd_resampled = average_target_over_frequency_bands(target_freqs, target_psd_windowed, estimate_freqs)
     target_psd_for_comparison = target_psd_resampled.T
-    target_variance = np.trapezoid(
-        target_psd_resampled[:, args.variance_low_freq_bins:],
-        estimate_freqs[args.variance_low_freq_bins:],
-        axis=1,
+    snapshot_indices = select_snapshot_indices(estimate_times, args.psd_snapshot_count, args.psd_snapshot_times)
+    snapshot_times = estimate_times[snapshot_indices]
+    snapshot_estimated_psd = estimated_psd[:, snapshot_indices]
+    snapshot_target_psd = sample_theoretical_psd_at_times(point_target_psd, times, snapshot_times)
+    snapshot_target_resampled = average_target_over_frequency_bands(target_freqs, snapshot_target_psd, estimate_freqs)
+    target_variance = compute_target_windowed_variance(
+        target_freqs,
+        target_psd_windowed,
+        dt,
+        args.window_size,
     )
 
     psd_error_metrics = compute_psd_error_metrics(
@@ -350,6 +446,11 @@ def main():
         target_variance,
         times,
         representative_signal,
+        estimate_freqs,
+        snapshot_estimated_psd,
+        snapshot_target_resampled,
+        snapshot_times,
+        args.skip_low_freq_bins,
         output_prefix,
         args.show,
     )
@@ -368,6 +469,8 @@ def main():
                 "overlap",
                 "skip_low_freq_bins",
                 "variance_low_freq_bins",
+                "psd_snapshot_count",
+                "psd_snapshot_times_s",
                 "relative_psd_error_raw",
                 "relative_psd_error_scaled",
                 "relative_psd_error_affine",
@@ -394,6 +497,8 @@ def main():
                 "overlap": args.overlap,
                 "skip_low_freq_bins": args.skip_low_freq_bins,
                 "variance_low_freq_bins": args.variance_low_freq_bins,
+                "psd_snapshot_count": len(snapshot_indices),
+                "psd_snapshot_times_s": ";".join(f"{value:.6f}" for value in snapshot_times),
                 "relative_psd_error_raw": f"{psd_error_metrics['raw_error']:.6e}",
                 "relative_psd_error_scaled": f"{psd_error_metrics['scale_aligned_error']:.6e}",
                 "relative_psd_error_affine": f"{psd_error_metrics['affine_aligned_error']:.6e}",
