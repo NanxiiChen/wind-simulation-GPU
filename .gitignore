@@ -12,13 +12,13 @@ data/
 .DS_Store
 examples/
 references/
-*.png
 src/stochastic_wind_simulate/jax_backend/simulator_nonstationary_serial_compare.py
 src/stochastic_wind_simulate/numpy_backend/simulator_nonstationary.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+benchmark_results/
 
 # C extensions
 *.so
