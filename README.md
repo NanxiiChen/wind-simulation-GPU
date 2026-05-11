@@ -24,7 +24,7 @@ Install the package in editable mode:
 pip install -e .
 ```
 
-Install additional dependencies. `JAX` is recommended for best performance, but you can also use `PyTorch` or `NumPy` backends:
+Install additional dependencies. `JAX` is highly recommended for best performance, but you can also use `PyTorch` or `NumPy` backends:
 ```bash
 pip install -U jax # for CPU
 pip install -U jax[cuda13] # for NVIDIA GPU with CUDA 13
@@ -40,7 +40,7 @@ python scripts/basic_usage.py --n-freqs 1024 --n-points 100 --backend jax
 ### Non-stationary simulation
 
 ```bash
-python scripts/simulate_nonstationary.py --n-freqs 1024 --n-points 100 --backend jax
+python scripts/simulate_nonstationary.py --n-freqs 1024 --n-points 100
 ```
 
 See [scripts/](scripts/) for more examples.
