@@ -95,13 +95,13 @@ class _BaseSimulator:
         phi = self._random_phases(len(frequencies), n)
 
         def _single_freq(freq, phi_l):
-            s = self.spectrum(freq, heights, component)
+            s = self._spec_fn(freq, heights, component)
             s = self._clip_positive(s)
-            coh = davenport_coherence(
-                xp, x_i, x_j, y_i, y_j, z_i, z_j,
+            coh = self._coh_fn(
+                x_i, x_j, y_i, y_j, z_i, z_j,
                 freq, U_i, U_j, C_x, C_y, C_z,
             )
-            csd = cross_spectrum(xp, s[:, None], s[None, :], coh)
+            csd = self._csd_fn(s[:, None], s[None, :], coh)
             csd = 0.5 * (csd + csd.T)
             H = self._cholesky(csd + eye_n * 1e-12)
             return self._matmul(self._to_complex(H), xp.exp(1j * phi_l))
@@ -176,7 +176,8 @@ class JaxWindSimulator(_BaseSimulator):
         import jax.numpy as jnp
         import jax.random as jr
         from jax import jit, vmap
-        from jax.scipy.linalg import cholesky
+        from jax.scipy.linalg import cholesky as _chol
+        from functools import partial as _p
 
         self._xp = jnp
         self._real_dtype = jnp.float32
@@ -185,18 +186,30 @@ class JaxWindSimulator(_BaseSimulator):
         self._to_numpy = lambda x: __import__('numpy').asarray(x)
         self._backend_name = "jax"
 
-        # Primitives
-        self._eye = lambda n: jnp.eye(n, dtype=jnp.float32)
-        self._zeros_c = lambda shape: jnp.zeros(shape, dtype=jnp.complex64)
-        self._arange = lambda n: jnp.arange(n, dtype=jnp.float32)
+        self._eye = _p(jnp.eye, dtype=jnp.float32)
+        self._zeros_c = _p(jnp.zeros, dtype=jnp.complex64)
+        self._arange = _p(jnp.arange, dtype=jnp.float32)
         self._matmul = jnp.matmul
-        self._cholesky = lambda m: cholesky(m, lower=True)
-        self._fft = lambda x, axis: jnp.fft.ifft(x, axis=axis)
-        self._clip_positive = lambda x: jnp.maximum(x, 0.0)
-        self._to_complex = lambda x: x  # JAX auto-casts
-        self._jit = lambda fn: jit(fn)
-        self._vmap = lambda fn: vmap(fn)
+        self._cholesky = _p(_chol, lower=True)
+        self._fft = _p(jnp.fft.ifft)
+        self._clip_positive = _p(jnp.maximum, 0.0)
+        self._to_complex = lambda x: x
+        self._jit = jit
+        self._vmap = vmap
         self._slice_set = lambda arr, idx, val: arr.at[idx].set(val)
+
+        # Pre-JIT helpers — compiled once, reduce outer JIT trace work
+        # @jit
+        def _coh(x_i, x_j, y_i, y_j, z_i, z_j, freq, U_i, U_j, C_x, C_y, C_z):
+            return davenport_coherence(jnp, x_i, x_j, y_i, y_j, z_i, z_j,
+                                       freq, U_i, U_j, C_x, C_y, C_z)
+
+        # @jit
+        def _csd(s_i, s_j, coh):
+            return cross_spectrum(jnp, s_i, s_j, coh)
+
+        self._coh_fn = _coh
+        self._csd_fn = _csd
 
         def _random_phases(n_freq, n_pts):
             from jax.random import split, uniform
@@ -206,6 +219,15 @@ class JaxWindSimulator(_BaseSimulator):
         self._random_phases = _random_phases
 
         super().__init__(spectrum_type, params)
+
+        # Pre-JIT spectrum (after super().__init__ so self.spectrum exists)
+        _sp = self.spectrum
+
+        @_p(jit, static_argnums=(2,))
+        def _spec_fn(freq, heights, component):
+            return _sp(freq, heights, component)
+
+        self._spec_fn = _spec_fn
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -219,26 +241,30 @@ class NumpyWindSimulator(_BaseSimulator):
 
     def __init__(self, seed=0, spectrum_type="kaimal", **params):
         import numpy as np
-        from scipy.linalg import cholesky
+        from scipy.linalg import cholesky as _chol
+        from functools import partial as _p
 
         self._xp = np
         self._real_dtype = np.float64
         self._seed = seed
         np.random.seed(seed)
-        self._asarray = lambda x, dtype=None: np.asarray(x, dtype=dtype or np.float64)
+        self._asarray = np.asarray
         self._to_numpy = np.asarray
         self._backend_name = "numpy"
 
-        self._eye = lambda n: np.eye(n)
-        self._zeros_c = lambda shape: np.zeros(shape, dtype=np.complex128)
-        self._arange = lambda n: np.arange(n, dtype=np.float64)
+        self._eye = np.eye
+        self._zeros_c = _p(np.zeros, dtype=np.complex128)
+        self._arange = _p(np.arange, dtype=np.float64)
         self._matmul = np.matmul
-        self._cholesky = lambda m: cholesky(m, lower=True)
-        self._fft = lambda x, axis: np.fft.ifft(x, axis=axis)
-        self._clip_positive = lambda x: np.maximum(x, 0.0)
-        self._to_complex = lambda x: x.astype(np.complex128)
-        self._jit = lambda fn: fn   # identity
+        self._cholesky = _p(_chol, lower=True)
+        self._fft = np.fft.ifft
+        self._clip_positive = _p(np.maximum, 0.0)
+        self._to_complex = _p(np.ndarray.astype, dtype=np.complex128)
+        self._jit = lambda fn: fn
         self._slice_set = lambda arr, idx, val: arr.__setitem__(idx, val) or arr
+
+        self._coh_fn = lambda *a: davenport_coherence(np, *a)
+        self._csd_fn = lambda *a: cross_spectrum(np, *a)
 
         def _vmap(fn):
             def _loop(*args):
@@ -254,6 +280,7 @@ class NumpyWindSimulator(_BaseSimulator):
         self._random_phases = _random_phases
 
         super().__init__(spectrum_type, params)
+        self._spec_fn = lambda f, h, c: self.spectrum(f, h, c)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -296,6 +323,9 @@ class TorchWindSimulator(_BaseSimulator):
         self._vmap = lambda fn: func.vmap(fn)
         self._slice_set = lambda arr, idx, val: arr.__setitem__(idx, val) or arr
 
+        self._coh_fn = lambda *a: davenport_coherence(torch, *a)
+        self._csd_fn = lambda *a: cross_spectrum(torch, *a)
+
         def _random_phases(n_freq, n_pts):
             torch.manual_seed(self._seed)
             self._seed += 1
@@ -304,6 +334,7 @@ class TorchWindSimulator(_BaseSimulator):
         self._random_phases = _random_phases
 
         super().__init__(spectrum_type, params)
+        self._spec_fn = lambda f, h, c: self.spectrum(f, h, c)
 
 
 # ═══════════════════════════════════════════════════════════════════════

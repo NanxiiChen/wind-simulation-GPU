@@ -30,24 +30,13 @@ class NonstationaryWindSimulator:
     """
 
     def __init__(self, sim):
-        self._sim = sim  # delegate all backend ops
+        self._sim = sim
 
-    # -- convenience property forwarding --------------------------------
-
-    @property
-    def params(self):
-        return self._sim.params
-
-    @property
-    def spectrum(self):
-        return self._sim.spectrum
-
-    @property
-    def backend_name(self):
-        return self._sim.backend_name
-
-    def update_params(self, **kwargs):
-        self._sim.update_params(**kwargs)
+    def __getattr__(self, name):
+        """Forward all attribute access to the wrapped simulator."""
+        if name == '_sim':
+            raise AttributeError(name)
+        return getattr(self._sim, name)
 
     # -- public API ----------------------------------------------------
 

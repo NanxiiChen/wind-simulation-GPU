@@ -230,19 +230,22 @@ class WindVisualizer:
         return np.arange(1, N + 1) * dw - dw / 2.0
 
     def _theoretical_psd(self, freqs, heights, component):
-        """Theoretical PSD over all freqs and all heights."""
+        """Theoretical PSD over all freqs and all heights.
+
+        Uses the simulator's pre-JIT ``_spec_fn`` (JAX) or vmap (Torch)
+        to avoid repeated tracing / compilation.
+        """
         sim = self.sim
         f = sim._asarray(freqs)
         h = sim._asarray(heights)
         if sim.backend_name == "jax":
             from jax import vmap
-            S = vmap(lambda freq: sim.spectrum(freq, h, component))(f)
+            S = vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         elif sim.backend_name == "torch":
             from torch.func import vmap
-            S = vmap(lambda freq: sim.spectrum(freq, h, component))(f)
+            S = vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         else:
-            xp = sim._xp
-            S = xp.array([sim.spectrum(xp.asarray(fi), h, component) for fi in freqs])
+            S = sim._vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         return np.asarray(sim._to_numpy(S))
 
     def _theoretical_psd_point(self, freqs, height, component):
@@ -252,36 +255,46 @@ class WindVisualizer:
         h = sim._asarray([height])
         if sim.backend_name == "jax":
             from jax import vmap
-            S = vmap(lambda freq: sim.spectrum(freq, h, component))(f)
+            S = vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         elif sim.backend_name == "torch":
             from torch.func import vmap
-            S = vmap(lambda freq: sim.spectrum(freq, h, component))(f)
+            S = vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         else:
-            xp = sim._xp
-            S = xp.array([sim.spectrum(xp.asarray(fi), h, component) for fi in freqs])
+            S = sim._vmap(lambda freq: sim._spec_fn(freq, h, component))(f)
         return np.asarray(sim._to_numpy(S)).flatten()
 
     def _coherence_array(self, freqs, pos_i, pos_j, U_i, U_j):
-        """Coherence over frequency array, for a single point pair."""
-        from .coherence import davenport_coherence
+        """Coherence over frequency array, for a single point pair.
 
+        Uses the simulator's pre-JIT ``_coh_fn`` with vmap (JAX/Torch)
+        or batch call (NumPy) to avoid per-frequency overhead.
+        """
         sim = self.sim
-        xp = sim._xp
+        f = sim._asarray(freqs)
+        xp_i = sim._asarray([pos_i[0]]); xp_j = sim._asarray([pos_j[0]])
+        yp_i = sim._asarray([pos_i[1]]); yp_j = sim._asarray([pos_j[1]])
+        zp_i = sim._asarray([pos_i[2]]); zp_j = sim._asarray([pos_j[2]])
+        ui = sim._asarray([U_i]); uj = sim._asarray([U_j])
         Cx, Cy, Cz = sim.params.C_x, sim.params.C_y, sim.params.C_z
 
-        result = []
-        for f in freqs:
-            coh = davenport_coherence(
-                xp,
-                sim._asarray([pos_i[0]]), sim._asarray([pos_j[0]]),
-                sim._asarray([pos_i[1]]), sim._asarray([pos_j[1]]),
-                sim._asarray([pos_i[2]]), sim._asarray([pos_j[2]]),
-                sim._asarray([f]),
-                sim._asarray([U_i]), sim._asarray([U_j]),
-                Cx, Cy, Cz,
-            )
-            result.append(float(sim._to_numpy(coh).flat[0]))
-        return np.array(result)
+        if sim.backend_name == "jax":
+            from jax import vmap
+            coh = vmap(
+                lambda fi: sim._coh_fn(xp_i, xp_j, yp_i, yp_j, zp_i, zp_j,
+                                       fi, ui, uj, Cx, Cy, Cz)
+            )(f)
+        elif sim.backend_name == "torch":
+            from torch.func import vmap
+            coh = vmap(
+                lambda fi: sim._coh_fn(xp_i, xp_j, yp_i, yp_j, zp_i, zp_j,
+                                       fi, ui, uj, Cx, Cy, Cz)
+            )(f)
+        else:
+            coh = sim._vmap(
+                lambda fi: sim._coh_fn(xp_i, xp_j, yp_i, yp_j, zp_i, zp_j,
+                                       fi, ui, uj, Cx, Cy, Cz)
+            )(f)
+        return np.asarray(sim._to_numpy(coh)).flatten()
 
     def _resolve_indices(self, indices, show_num, n):
         if indices is not None:
