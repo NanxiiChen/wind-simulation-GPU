@@ -1,5 +1,0 @@
-- Add some examples, unlike scripts. Examples do not need such argument parsing, and can be more direct.
-    - A simple example for the basic usage of the library, with arbitrary positions, and with the default spectrum and stationary case.
-    - Example with customized spectrum for stationary case
-    - Example with customized evolution PSD for non-stationary case
-- Add documentation
