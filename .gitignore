@@ -20,6 +20,7 @@ benchmark_results/
 __pycache__/
 *.py[cod]
 *$py.class
+img/
 
 # C extensions
 *.so
