@@ -75,44 +75,45 @@ def theoretical_evolutional_psd(sim, freqs, positions, wind_speeds,
                                 component, times, modulation_amplitude,
                                 modulation_values):
     heights = positions[:, 2]
-    freqs_j = sim.backend.asarray(freqs)
-    times_j = sim.backend.asarray(times)
-    mod_vals_j = sim.backend.asarray(modulation_values) if modulation_values is not None else None
+    freqs_j = sim._asarray(freqs)
+    times_j = sim._asarray(times)
     T = sim.params.T
 
-    # Use backend vmap for time-frequency scan
-    if sim.backend.name == "jax":
+    # Pre-compute modulation factors (avoids indexing inside vmap)
+    if modulation_values is not None:
+        mod_f = sim._asarray(modulation_values)
+    else:
+        mod_f = sim._asarray(1.0) + sim._asarray(modulation_amplitude) * sim._xp.sin(
+            2.0 * sim._xp.pi * times_j / T)
+
+    if sim.backend_name == "jax":
         from jax import vmap
-        def _one_time(ti, tv):
+        def _one_time(mf):
             return vmap(lambda f: sim._evolutional_psd(
-                f, heights, wind_speeds, component, tv, ti, T,
-                modulation_amplitude, mod_vals_j, None,
+                f, heights, wind_speeds, component, mf, None,
             ))(freqs_j)
-        t_idx = sim.backend.xp.arange(len(times))
-        result = vmap(_one_time)(t_idx, times_j)
-    elif sim.backend.name == "torch":
+        result = vmap(_one_time)(mod_f)
+    elif sim.backend_name == "torch":
         import torch.func as func
-        def _one_time(ti, tv):
+        def _one_time(mf):
             return func.vmap(lambda f: sim._evolutional_psd(
-                f, heights, wind_speeds, component, tv, ti, T,
-                modulation_amplitude, mod_vals_j, None,
+                f, heights, wind_speeds, component, mf, None,
             ))(freqs_j)
-        t_idx = sim.backend.arange(len(times))
-        result = func.vmap(_one_time)(t_idx, times_j)
+        result = func.vmap(_one_time)(mod_f)
     else:
         result = []
-        for ti, tv in enumerate(times):
+        for ti in range(len(times)):
             row = []
             for f in freqs:
                 val = sim._evolutional_psd(
-                    f, heights, wind_speeds, component, tv, ti, T,
-                    modulation_amplitude, mod_vals_j, None,
+                    f, heights, wind_speeds, component,
+                    mod_f[ti], None,
                 )
-                row.append(np.asarray(sim.backend.to_numpy(val)))
+                row.append(np.asarray(sim._to_numpy(val)))
             result.append(np.array(row))
         result = np.array(result)
 
-    return np.asarray(sim.backend.to_numpy(result), dtype=np.float32)
+    return np.asarray(sim._to_numpy(result), dtype=np.float32)
 
 
 def average_over_windows(target_psd, target_times, window_centers, dt, window_size):
@@ -275,7 +276,7 @@ def parse_args():
     p.add_argument("--modulation-amplitude", type=float, default=0.2)
     p.add_argument("--skip-low-freq-bins", type=int, default=1)
     p.add_argument("--psd-snapshot-count", type=int, default=4)
-    p.add_argument("--output-dir", type=str, default="benchmark_results")
+    p.add_argument("--output-dir", type=str, default="output")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--show", action="store_true")
     return p.parse_args()

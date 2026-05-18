@@ -101,6 +101,7 @@ class NonstationaryWindSimulator:
         freqs = s._asarray(simulation_frequencies(xp, N, dw))
         times = s._asarray(s._arange(M)) * dt
 
+        # Pre-compute modulation factors (M,) to avoid indexing inside vmap
         if modulation_values is not None:
             modulation_values = s._asarray(modulation_values)
             if modulation_values.shape != (M,):
@@ -108,6 +109,10 @@ class NonstationaryWindSimulator:
                     f"modulation_values must have shape ({M},), "
                     f"got {modulation_values.shape}"
                 )
+            mod_factors = modulation_values
+        else:
+            mod_factors = s._asarray(1.0) + s._asarray(modulation_amplitude) * xp.sin(
+                2.0 * xp.pi * times / T_total)
 
         # Spatial grids
         x_i, x_j = positions[:, 0:1], positions[:, 0:1].T
@@ -132,20 +137,15 @@ class NonstationaryWindSimulator:
         logger.info("Chunks: %d freq x %d time (freq_batch=%d, time_batch=%d)",
                     n_fb, n_tb, freq_batch, time_batch)
 
-        # -- shared single-time amplitude (captures freq_l, phi_l from _single_freq) --
+        # -- shared single-time amplitude --
         def _make_single_time(freq_l, phi_l):
-            def _single_time(time_idx, time_m):
+            def _single_time(time_idx, time_m, mod_factor):
                 s_ev = self._evolutional_psd(
                     freq_l, heights, wind_speeds, component,
-                    time_m, time_idx, T_total,
-                    modulation_amplitude, modulation_values,
-                    evolution_psd_generator,
+                    mod_factor, evolution_psd_generator,
                 )
                 s_ev = s._clip_positive(s_ev)
-                U_mod = self._modulated_wind(
-                    wind_speeds, time_m, time_idx, T_total,
-                    modulation_amplitude, modulation_values,
-                )
+                U_mod = self._modulated_wind(wind_speeds, mod_factor)
                 Ui, Uj = U_mod[:, None], U_mod[None, :]
                 coh = davenport_coherence(
                     xp, x_i, x_j, y_i, y_j, z_i, z_j,
@@ -161,37 +161,39 @@ class NonstationaryWindSimulator:
                 )
             return _single_time
 
-        # -- backend-specific chunk functions (defined ONCE, reused) --
+        # -- backend-specific chunk functions --
         if s.backend_name == "jax":
             from jax import jit
 
             @jit
-            def _single_freq(freq_l, time_chunk, time_indices, phi_l):
-                return s._vmap(_make_single_time(freq_l, phi_l))(time_indices, time_chunk)
+            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
+                return s._vmap(_make_single_time(freq_l, phi_l))(
+                    time_indices, time_chunk, mod_chunk)
 
             @jit
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, phi_chunk):
+            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
                 return s._vmap(
-                    lambda f, p: _single_freq(f, time_chunk, time_indices, p)
+                    lambda f, p: _single_freq(f, time_chunk, time_indices, mod_chunk, p)
                 )(freq_chunk, phi_chunk)
 
         elif s.backend_name == "torch":
-            def _single_freq(freq_l, time_chunk, time_indices, phi_l):
-                return s._vmap(_make_single_time(freq_l, phi_l))(time_indices, time_chunk)
+            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
+                return s._vmap(_make_single_time(freq_l, phi_l))(
+                    time_indices, time_chunk, mod_chunk)
 
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, phi_chunk):
+            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
                 return s._vmap(
-                    lambda f, p: _single_freq(f, time_chunk, time_indices, p)
+                    lambda f, p: _single_freq(f, time_chunk, time_indices, mod_chunk, p)
                 )(freq_chunk, phi_chunk)
         else:
-            def _single_freq(freq_l, time_chunk, time_indices, phi_l):
+            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
                 st = _make_single_time(freq_l, phi_l)
-                return np.array([st(time_indices[j], time_chunk[j])
+                return np.array([st(time_indices[j], time_chunk[j], mod_chunk[j])
                                  for j in range(len(time_chunk))])
 
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, phi_chunk):
+            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
                 return np.array([
-                    _single_freq(freq_chunk[i], time_chunk, time_indices, phi_chunk[i])
+                    _single_freq(freq_chunk[i], time_chunk, time_indices, mod_chunk, phi_chunk[i])
                     for i in range(len(freq_chunk))
                 ])
 
@@ -208,14 +210,15 @@ class NonstationaryWindSimulator:
                 ts, te = tb * time_batch, min((tb + 1) * time_batch, M)
                 tc = times[ts:te]
                 ti = s._asarray(xp.arange(ts, te))
+                mc = mod_factors[ts:te]
 
                 if mode == "freq-for":
                     chunk_sum = s._zeros_c((te - ts, n))
                     for k in range(len(fc)):
-                        contrib = _compute_chunk(fc[k:k+1], tc, ti, pc[k:k+1])
+                        contrib = _compute_chunk(fc[k:k+1], tc, ti, mc, pc[k:k+1])
                         chunk_sum = chunk_sum + (contrib[0] if contrib.ndim == 3 else contrib)
                 else:
-                    contrib = _compute_chunk(fc, tc, ti, pc)
+                    contrib = _compute_chunk(fc, tc, ti, mc, pc)
                     chunk_sum = contrib.sum(axis=0) if contrib.ndim == 3 else contrib
 
                 V_accum = s._slice_set(
@@ -237,27 +240,19 @@ class NonstationaryWindSimulator:
     # -- helpers -----------------------------------------------------
 
     def _evolutional_psd(self, freq, heights, wind_speeds, component,
-                          time_val, time_idx, T_total,
-                          mod_amp, mod_vals, psd_gen):
-        if psd_gen is not None:
-            result = psd_gen(
-                freq=freq, heights=heights, wind_speeds=wind_speeds,
-                component=component, time_value=time_val,
-                time_index=time_idx, total_time=T_total, simulator=self,
-            )
-            return self._sim._asarray(result)
-        U_mod = self._modulated_wind(
-            wind_speeds, time_val, time_idx, T_total, mod_amp, mod_vals)
-        return self._sim.spectrum(freq, heights, component, U_d=U_mod)
-
-    def _modulated_wind(self, wind_speeds, time_val, time_idx, T_total,
-                         mod_amp, mod_vals):
+                          mod_factor, psd_gen):
         s = self._sim
-        if mod_vals is not None:
-            return wind_speeds * mod_vals[time_idx]
-        scale = s._asarray(1.0) + s._asarray(mod_amp) * s._xp.sin(
-            2.0 * s._xp.pi * time_val / T_total)
-        return wind_speeds * scale
+        if psd_gen is not None:
+            return s._asarray(psd_gen(
+                freq=freq, heights=heights, wind_speeds=wind_speeds,
+                component=component, mod_factor=mod_factor, simulator=self,
+            ))
+        U_mod = self._modulated_wind(wind_speeds, mod_factor)
+        return s.spectrum(freq, s._asarray(heights), component, U_d=U_mod)
+
+    def _modulated_wind(self, wind_speeds, mod_factor):
+        """Return wind_speeds scaled by mod_factor (backend array or scalar)."""
+        return self._sim._asarray(wind_speeds) * self._sim._asarray(mod_factor)
 
     def _choose_chunks(self, mode, n, N, M, est_mem, max_mem,
                         freq_batch, time_batch, auto_batch):

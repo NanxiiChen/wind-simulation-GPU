@@ -1,0 +1,4 @@
+- Add some examples, unlick scripts. Examples do not need such argument parsing, and can be more direct.
+- Add documentation
+- Add examples for customized spectrum, customized evolution PSD.
+- Currently in scripts, positions are fix along x-axis. Add example for arbitrary positions.
