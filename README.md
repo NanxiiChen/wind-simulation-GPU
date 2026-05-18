@@ -7,6 +7,7 @@ Stochastic wind field simulation based on Shinozuka's harmonic synthesis method.
 - Multi-backend support: JAX (recommended), PyTorch, NumPy
 - Stationary and non-stationary wind field simulation without approximation such as interpolation or low-rank decomposition.
 
+A more recent rewrite with a more unified API across all backends is available on the `dev` branch (experimental).
 ## Benchmark
 
 ### Statioanry 
