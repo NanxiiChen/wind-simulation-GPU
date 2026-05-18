@@ -11,11 +11,11 @@ demo.ipynb
 *.xlsx
 data/
 .DS_Store
-examples/
+examples_legacy/
 references/
 *.png
 src/stochastic_wind_simulate/jax_backend/simulator_nonstationary_serial_compare.py
-
+benchmark_results/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

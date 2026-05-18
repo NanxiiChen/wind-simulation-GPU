@@ -34,7 +34,14 @@ class _BaseSimulator:
 
     def __init__(self, spectrum_type, params):
         self.params = SimulationParams(**params) if params else SimulationParams()
-        spectrum_cls = get_spectrum(spectrum_type)
+        if isinstance(spectrum_type, str):
+            spectrum_cls = get_spectrum(spectrum_type)
+        elif isinstance(spectrum_type, type):
+            spectrum_cls = spectrum_type
+        else:
+            raise TypeError(
+                f"spectrum_type must be a string or class, got {type(spectrum_type)}"
+            )
         self.spectrum = spectrum_cls(self._xp, self.params.to_dict())
 
     @property
