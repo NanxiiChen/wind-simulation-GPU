@@ -20,7 +20,7 @@ Stochastic wind field simulation is extensively utilized in civil and wind engin
 pip install -e .
 ```
 
-Requires one of: `jax[cuda]`, `torch`, or `numpy` + `scipy`.  The recommended backend is JAX.
+Requires one of: `jax[cuda]`, `torch`, or `numpy` + `scipy`.  The recommended backend is JAX, even on `jax[cup]`.
 
 Optional: `ml_collections` for config-file support, `matplotlib` for plotting.
 
