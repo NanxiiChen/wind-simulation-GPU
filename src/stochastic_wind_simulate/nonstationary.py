@@ -12,8 +12,6 @@ import logging
 import time
 from typing import Optional
 
-import numpy as np
-
 from .coherence import davenport_coherence, cross_spectrum, simulation_frequencies
 
 logger = logging.getLogger(__name__)
@@ -139,7 +137,7 @@ class NonstationaryWindSimulator:
 
         # -- shared single-time amplitude --
         def _make_single_time(freq_l, phi_l):
-            def _single_time(time_idx, time_m, mod_factor):
+            def _single_time(time_m, mod_factor):
                 s_ev = self._evolutional_psd(
                     freq_l, heights, wind_speeds, component,
                     mod_factor, evolution_psd_generator,
@@ -161,41 +159,16 @@ class NonstationaryWindSimulator:
                 )
             return _single_time
 
-        # -- backend-specific chunk functions --
-        if s.backend_name == "jax":
-            from jax import jit
+        # -- chunk functions (jit/vmap handled by primitives, same pattern as simulator.py) --
+        @self._jit
+        def _single_freq(freq_l, time_chunk, mod_chunk, phi_l):
+            return s._vmap(_make_single_time(freq_l, phi_l))(time_chunk, mod_chunk)
 
-            @jit
-            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
-                return s._vmap(_make_single_time(freq_l, phi_l))(
-                    time_indices, time_chunk, mod_chunk)
-
-            @jit
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
-                return s._vmap(
-                    lambda f, p: _single_freq(f, time_chunk, time_indices, mod_chunk, p)
-                )(freq_chunk, phi_chunk)
-
-        elif s.backend_name == "torch":
-            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
-                return s._vmap(_make_single_time(freq_l, phi_l))(
-                    time_indices, time_chunk, mod_chunk)
-
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
-                return s._vmap(
-                    lambda f, p: _single_freq(f, time_chunk, time_indices, mod_chunk, p)
-                )(freq_chunk, phi_chunk)
-        else:
-            def _single_freq(freq_l, time_chunk, time_indices, mod_chunk, phi_l):
-                st = _make_single_time(freq_l, phi_l)
-                return np.array([st(time_indices[j], time_chunk[j], mod_chunk[j])
-                                 for j in range(len(time_chunk))])
-
-            def _compute_chunk(freq_chunk, time_chunk, time_indices, mod_chunk, phi_chunk):
-                return np.array([
-                    _single_freq(freq_chunk[i], time_chunk, time_indices, mod_chunk, phi_chunk[i])
-                    for i in range(len(freq_chunk))
-                ])
+        @self._jit
+        def _compute_chunk(freq_chunk, time_chunk, mod_chunk, phi_chunk):
+            return s._vmap(
+                lambda f, p: _single_freq(f, time_chunk, mod_chunk, p)
+            )(freq_chunk, phi_chunk)
 
         # -- main loop over chunks ---------------------------------
         t_start = time.time()
@@ -209,16 +182,15 @@ class NonstationaryWindSimulator:
             for tb in range(n_tb):
                 ts, te = tb * time_batch, min((tb + 1) * time_batch, M)
                 tc = times[ts:te]
-                ti = s._asarray(xp.arange(ts, te))
                 mc = mod_factors[ts:te]
 
                 if mode == "freq-for":
                     chunk_sum = s._zeros_c((te - ts, n))
                     for k in range(len(fc)):
-                        contrib = _compute_chunk(fc[k:k+1], tc, ti, mc, pc[k:k+1])
+                        contrib = _compute_chunk(fc[k:k+1], tc, mc, pc[k:k+1])
                         chunk_sum = chunk_sum + (contrib[0] if contrib.ndim == 3 else contrib)
                 else:
-                    contrib = _compute_chunk(fc, tc, ti, mc, pc)
+                    contrib = _compute_chunk(fc, tc, mc, pc)
                     chunk_sum = contrib.sum(axis=0) if contrib.ndim == 3 else contrib
 
                 V_accum = s._slice_set(
