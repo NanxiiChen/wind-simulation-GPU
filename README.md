@@ -2,6 +2,8 @@
 
 A high-performance framework for stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
+Note: a stable version of this code is on the `main` branch, which is no longer maintained. The `dev` branch contains the latest features and improvements, but may be less stable. Please choose the branch that best suits your needs.
+
 ## Overview
 
 Stochastic wind field simulation is extensively utilized in civil and wind engineering for analyzing the dynamic responses of bridges, buildings, and other structures under wind loading. This library implements the classical Shinozuka harmonic synthesis method enhanced with modern GPU parallel computing techniques to achieve efficient stochastic wind field generation.

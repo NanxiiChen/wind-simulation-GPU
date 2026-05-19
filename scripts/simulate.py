@@ -149,11 +149,25 @@ def main():
     if show or not args.no_save:
         viz = WindVisualizer(sim, seed=seed)
         out_dir = Path(args.output_dir)
-        viz.plot_psd(samples, positions[:, 2], show_num=6, component=component,
-                     show=show, save_path=str(out_dir / f"psd_{backend}.png") if not args.no_save else None)
-        viz.plot_cross_correlation(samples, positions, wind_speeds, component=component,
-                                   indices=(1, min(5, n_points - 1)), show=show,
-                                   save_path=str(out_dir / f"corr_{backend}.png") if not args.no_save else None)
+        if nonstationary:
+            viz_cfg = cfg.get("visualization", {})
+            pt = viz_cfg.get("point_index", 0)
+            viz.plot_nonstationary_psd(
+                samples[pt], height=positions[pt, 2], wind_speed=wind_speeds[pt],
+                component=component,
+                window_size=viz_cfg.get("window_size", 64),
+                overlap=viz_cfg.get("overlap", 50),
+                modulation_amplitude=mod_amp,
+                snapshot_count=viz_cfg.get("snapshot_count", 4),
+                show=show,
+                save_path=str(out_dir / f"psd_{backend}_ns.png") if not args.no_save else None,
+            )
+        else:
+            viz.plot_psd(samples, positions[:, 2], show_num=6, component=component,
+                         show=show, save_path=str(out_dir / f"psd_{backend}.png") if not args.no_save else None)
+            viz.plot_cross_correlation(samples, positions, wind_speeds, component=component,
+                                       indices=(1, min(5, n_points - 1)), show=show,
+                                       save_path=str(out_dir / f"corr_{backend}.png") if not args.no_save else None)
 
 
 if __name__ == "__main__":

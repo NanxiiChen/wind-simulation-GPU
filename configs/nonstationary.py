@@ -35,6 +35,13 @@ def get_config() -> ConfigDict:
     cfg.nonstationary.modulation_amplitude = 0.2
     cfg.nonstationary.max_memory_gb = 8.0
 
+    # Visualisation (nonstationary uses short-time Fourier)
+    cfg.visualization = ConfigDict()
+    cfg.visualization.point_index = 0    # which spatial point to plot
+    cfg.visualization.window_size = 64   # STFT window [samples]
+    cfg.visualization.overlap = 50       # overlap [samples]
+    cfg.visualization.snapshot_count = 4 # PSD snapshots to show
+
     # Output
     cfg.output = ConfigDict()
     cfg.output.save_samples = True

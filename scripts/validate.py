@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from stochastic_wind_simulate import (
     NonstationaryWindSimulator,
+    WindVisualizer,
     create_simulator,
 )
 
@@ -36,121 +37,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Spectrogram & window helpers
-# ---------------------------------------------------------------------------
-
-def local_spectrogram(signal, dt, window_size, overlap):
-    step = max(1, window_size - overlap)
-    window = np.hanning(window_size).astype(np.float32)
-    window_power = np.sum(window**2)
-    starts = np.arange(0, len(signal) - window_size + 1, step)
-    center_times = (starts + window_size / 2.0) * dt
-
-    segments = np.stack([signal[s:s + window_size] for s in starts], axis=0)
-    segments -= np.mean(segments, axis=1, keepdims=True)
-    segments *= window[None, :]
-
-    fft_vals = np.fft.rfft(segments, axis=1)
-    spec = (np.abs(fft_vals) ** 2) / (window_power / dt)
-    if spec.shape[1] > 2:
-        spec[:, 1:-1] *= 2.0
-    freqs = np.fft.rfftfreq(window_size, d=dt)
-    return freqs, center_times, spec.T
-
-
-def windowed_variance(signal, window_size, overlap):
-    step = max(1, window_size - overlap)
-    starts = np.arange(0, len(signal) - window_size + 1, step)
-    windows = np.stack([signal[s:s + window_size] for s in starts], axis=0)
-    return np.var(windows, axis=1)
-
-
-# ---------------------------------------------------------------------------
-# Theoretical PSD helpers
-# ---------------------------------------------------------------------------
-
-def theoretical_evolutional_psd(sim, freqs, positions, wind_speeds,
-                                component, times, modulation_amplitude,
-                                modulation_values):
-    heights = positions[:, 2]
-    freqs_j = sim._asarray(freqs)
-    times_j = sim._asarray(times)
-    T = sim.params.T
-
-    # Pre-compute modulation factors (avoids indexing inside vmap)
-    if modulation_values is not None:
-        mod_f = sim._asarray(modulation_values)
-    else:
-        mod_f = sim._asarray(1.0) + sim._asarray(modulation_amplitude) * sim._xp.sin(
-            2.0 * sim._xp.pi * times_j / T)
-
-    if sim.backend_name == "jax":
-        from jax import vmap
-        def _one_time(mf):
-            return vmap(lambda f: sim._evolutional_psd(
-                f, heights, wind_speeds, component, mf, None,
-            ))(freqs_j)
-        result = vmap(_one_time)(mod_f)
-    elif sim.backend_name == "torch":
-        import torch.func as func
-        def _one_time(mf):
-            return func.vmap(lambda f: sim._evolutional_psd(
-                f, heights, wind_speeds, component, mf, None,
-            ))(freqs_j)
-        result = func.vmap(_one_time)(mod_f)
-    else:
-        result = []
-        for ti in range(len(times)):
-            row = []
-            for f in freqs:
-                val = sim._evolutional_psd(
-                    f, heights, wind_speeds, component,
-                    mod_f[ti], None,
-                )
-                row.append(np.asarray(sim._to_numpy(val)))
-            result.append(np.array(row))
-        result = np.array(result)
-
-    return np.asarray(sim._to_numpy(result), dtype=np.float32)
-
-
-def average_over_windows(target_psd, target_times, window_centers, dt, window_size):
-    half = 0.5 * window_size * dt
-    out = []
-    for center in window_centers:
-        mask = (target_times >= center - half) & (target_times < center + half)
-        if not np.any(mask):
-            idx = int(np.argmin(np.abs(target_times - center)))
-            out.append(target_psd[idx])
-        else:
-            out.append(np.mean(target_psd[mask], axis=0))
-    return np.stack(out, axis=0)
-
-
-def average_over_freq_bands(target_freqs, target_psd, est_freqs):
-    """Bin-averaged target PSD onto estimated frequency bins."""
-    edges = np.empty(len(est_freqs) + 1, dtype=np.float32)
-    edges[1:-1] = 0.5 * (est_freqs[:-1] + est_freqs[1:])
-    edges[0] = max(0.0, est_freqs[0] - 0.5 * (est_freqs[1] - est_freqs[0]))
-    edges[-1] = est_freqs[-1] + 0.5 * (est_freqs[-1] - est_freqs[-2])
-
-    out = np.empty((target_psd.shape[0], len(est_freqs)), dtype=np.float32)
-    for ti in range(target_psd.shape[0]):
-        for fi, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
-            mask = (target_freqs >= lo) & (target_freqs < hi)
-            if np.any(mask):
-                bf = target_freqs[mask]
-                bv = target_psd[ti, mask]
-                if len(bf) == 1:
-                    out[ti, fi] = bv[0]
-                else:
-                    out[ti, fi] = np.trapezoid(bv, bf) / (hi - lo)
-            else:
-                mid = 0.5 * (lo + hi)
-                out[ti, fi] = np.interp(mid, target_freqs, target_psd[ti])
-    return out
+# Reuse the visualizer's implementations — no duplicated code.
+local_spectrogram = WindVisualizer._local_spectrogram
+windowed_variance = WindVisualizer._local_variance
+average_over_windows = WindVisualizer._average_over_windows
+average_over_freq_bands = WindVisualizer._average_over_freq_bands
+_window_mean_response = WindVisualizer._window_mean_response
 
 
 # ---------------------------------------------------------------------------
@@ -352,12 +244,13 @@ def main():
     times = np.arange(M) * dt
     mod_vals = 1.0 + mod_amp * np.sin(2.0 * np.pi * times / sim.params.T)
 
-    # Target theoretical PSD
+    # Target theoretical PSD (via visualizer's double-vmap helper)
     logger.info("Computing target evolutionary PSD...")
     target_freqs = np.arange(1, n_freqs + 1) * sim.params.dw - sim.params.dw / 2.0
-    tgt_psd_full = theoretical_evolutional_psd(
-        sim, target_freqs, positions, wind_speeds,
-        component, times, mod_amp, mod_vals,
+    viz = WindVisualizer(sim)
+    tgt_psd_full = viz._compute_evolutionary_psd_full(
+        target_freqs, positions[:, 2], wind_speeds,
+        component, mod_vals,
     )
 
     # Ensemble simulations
