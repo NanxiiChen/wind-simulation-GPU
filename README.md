@@ -1,6 +1,6 @@
-# GPU-Accelerated Stochastic Wind Field Simulation
+# Fully Parallelized Stochastic Wind Field Simulation Framework
 
-A high-performance framework for stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
+A high-performance framework for stationary and non-stationary stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
 Note: a stable version of this code is on the `main` branch, which is no longer maintained. The `dev` branch contains the latest features and improvements, but may be less stable. Please choose the branch that best suits your needs.
 
