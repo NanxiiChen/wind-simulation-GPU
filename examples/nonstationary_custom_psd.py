@@ -84,6 +84,9 @@ t_var = np.arange(len(var_t)) * (window // 2) * dt
 print(f"Variance ranges from {var_t.min():.1f} to {var_t.max():.1f} "
       f"(period ≈ {sim.params.T:.0f} s)")
 
-# --- 6. Visualise ---
-viz = WindVisualizer(sim, seed=42)
-viz.plot_psd(samples, positions[:, 2], show_num=5, component="u")
+# --- 6. Visualise (nonstationary: short-time Fourier) ---
+viz = WindVisualizer(ns, seed=42)
+viz.plot_nonstationary_psd(
+    samples[0], height=35.0, wind_speed=30.0, component="u",
+    window_size=64, overlap=50, snapshot_count=4,
+)
