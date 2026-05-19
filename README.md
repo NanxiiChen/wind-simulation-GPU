@@ -18,17 +18,16 @@ Stochastic wind field simulation is extensively utilized in civil and wind engin
 
 ## Installation
 
+Clone the repository and install the package in editable mode:
+
 ```bash
+git clone -b dev --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git
+cd wind-simulation-GPU
 pip install -e .
 ```
 
-Requires one of: `jax[cuda]`, `torch`, or `numpy` + `scipy`.  The recommended backend is JAX, even on `jax[cup]`.
+Requires one of: `jax[cuda]` (GPU), `jax[cpu]` (CPU), `torch`, or `numpy` + `scipy`.  JAX is the recommended backend on both GPU and CPU.
 
-Optional: `ml_collections` for config-file support, `matplotlib` for plotting.
-
-```bash
-conda activate jaxenv   # or your preferred environment
-```
 
 ## Quick Start
 
