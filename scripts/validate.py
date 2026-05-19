@@ -180,7 +180,7 @@ def main(_):
             positions, wind_speeds, component=wind.component,
             mode=ns_cfg.mode, modulation_amplitude=ns_cfg.modulation_amplitude,
             modulation_values=mod_vals,
-            max_memory_gb=ns_cfg.max_memory_gb, auto_batch=True,
+            max_memory_gb=cfg.memory.max_memory_gb, auto_batch=True,
         )
         sig = samples[val.point_index]
         if repr_signal is None:

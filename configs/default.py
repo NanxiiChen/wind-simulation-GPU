@@ -26,9 +26,11 @@ def get_config() -> ConfigDict:
     cfg.spatial.z = 35.0
     cfg.spatial.wind_speed = 30.0
 
-    # Nonstationary (disabled by default)
+    # Nonstationary (disabled by default — enable with --config.nonstationary.enabled=True)
     cfg.nonstationary = ConfigDict()
     cfg.nonstationary.enabled = False
+    cfg.nonstationary.mode = "chunked-vmap"
+    cfg.nonstationary.modulation_amplitude = 0.2
 
     # Memory / batching
     cfg.memory = ConfigDict()
@@ -39,6 +41,10 @@ def get_config() -> ConfigDict:
     # Visualisation
     cfg.visualization = ConfigDict()
     cfg.visualization.show_plots = True
+    cfg.visualization.point_index = 0
+    cfg.visualization.window_size = 64
+    cfg.visualization.overlap = 50
+    cfg.visualization.snapshot_count = 4
 
     # Output
     cfg.output = ConfigDict()

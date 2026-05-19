@@ -33,7 +33,9 @@ def get_config() -> ConfigDict:
     cfg.nonstationary = ConfigDict()
     cfg.nonstationary.mode = "chunked-vmap"
     cfg.nonstationary.modulation_amplitude = 0.2
-    cfg.nonstationary.max_memory_gb = 8.0
+
+    cfg.memory = ConfigDict()
+    cfg.memory.max_memory_gb = 8.0
 
     # Validation
     cfg.validation = ConfigDict()

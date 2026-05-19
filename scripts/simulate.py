@@ -84,16 +84,16 @@ def main(_):
             positions, wind_speeds, component=component,
             mode=ns_cfg.mode,
             modulation_amplitude=ns_cfg.modulation_amplitude,
-            max_memory_gb=ns_cfg.get("max_memory_gb", mem.max_memory_gb),
-            freq_batch_size=ns_cfg.get("freq_batch_size", mem.get("freq_batch_size")),
-            auto_batch=ns_cfg.get("auto_batch", mem.get("auto_batch", True)),
+            max_memory_gb=mem.max_memory_gb,
+            freq_batch_size=mem.freq_batch_size,
+            auto_batch=mem.auto_batch,
         )
     else:
         samples, freqs = sim.simulate_wind(
             positions, wind_speeds, component=component,
-            max_memory_gb=mem.get("max_memory_gb", 4.0),
-            freq_batch_size=mem.get("freq_batch_size"),
-            auto_batch=mem.get("auto_batch", True),
+            max_memory_gb=mem.max_memory_gb,
+            freq_batch_size=mem.freq_batch_size,
+            auto_batch=mem.auto_batch,
         )
     logger.info("Done in %.2f s | shape %s", time.time() - t0, samples.shape)
 

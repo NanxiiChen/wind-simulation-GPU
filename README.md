@@ -49,7 +49,8 @@ python scripts/simulate.py --config=configs/nonstationary.py
 
 python scripts/simulate.py --config=configs/default.py \
     --config.nonstationary.enabled=True \
-    --config.nonstationary.modulation_amplitude=0.3
+    --config.nonstationary.modulation_amplitude=0.5 \
+    --config.params.N=1024 --config.spatial.n_points=100
 
 # Benchmark frequency scaling
 python scripts/benchmark.py --config=configs/benchmark_freq.py

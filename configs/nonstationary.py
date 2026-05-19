@@ -28,13 +28,11 @@ def get_config() -> ConfigDict:
     cfg.nonstationary.enabled = True
     cfg.nonstationary.mode = "chunked-vmap"
     cfg.nonstationary.modulation_amplitude = 0.2
-    cfg.nonstationary.max_memory_gb = 8.0
-    cfg.nonstationary.auto_batch = True
-    cfg.nonstationary.freq_batch_size = None
 
     cfg.memory = ConfigDict()
-    cfg.memory.max_memory_gb = 4.0
+    cfg.memory.max_memory_gb = 8.0
     cfg.memory.auto_batch = True
+    cfg.memory.freq_batch_size = None
 
     cfg.visualization = ConfigDict()
     cfg.visualization.point_index = 0
