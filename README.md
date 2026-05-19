@@ -28,6 +28,10 @@ pip install -e .
 
 Requires one of: `jax[cuda]` (GPU), `jax[cpu]` (CPU), `torch`, or `numpy` + `scipy`.  JAX is the recommended backend on both GPU and CPU.
 
+```bash
+pip install "jax[cuda12]"  # for GPU (with CUDA 12)
+pip install "jax[cpu]"   # for CPU
+```
 
 ## Quick Start
 
