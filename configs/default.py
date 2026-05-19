@@ -6,12 +6,12 @@ from ml_collections import ConfigDict
 def get_config() -> ConfigDict:
     cfg = ConfigDict()
 
-    # Backend
     cfg.backend = "jax"
     cfg.spectrum = "kaimal"
     cfg.seed = 42
+    cfg.component = "u"
 
-    # Simulation parameters
+    # Physical & numerical parameters
     cfg.params = ConfigDict()
     cfg.params.U_d = 20.0
     cfg.params.H_bar = 20.0
@@ -20,16 +20,15 @@ def get_config() -> ConfigDict:
     cfg.params.w_up = 5.0
     cfg.params.N = 3000
 
-    # Spatial configuration
+    # Spatial layout
     cfg.spatial = ConfigDict()
     cfg.spatial.n_points = 100
-    cfg.spatial.z = 35.0  # Height (m)
-    cfg.spatial.x_range = [0.0, 1000.0]  # x min, x max
-    cfg.spatial.y = 5.0  # Fixed y coordinate
-    cfg.spatial.wind_speed = 30.0  # Constant wind speed at all points
+    cfg.spatial.z = 35.0
+    cfg.spatial.wind_speed = 30.0
 
-    # Wind component
-    cfg.component = "u"
+    # Nonstationary (disabled by default)
+    cfg.nonstationary = ConfigDict()
+    cfg.nonstationary.enabled = False
 
     # Memory / batching
     cfg.memory = ConfigDict()
@@ -37,10 +36,13 @@ def get_config() -> ConfigDict:
     cfg.memory.auto_batch = True
     cfg.memory.freq_batch_size = None  # None = auto
 
+    # Visualisation
+    cfg.visualization = ConfigDict()
+    cfg.visualization.show_plots = True
+
     # Output
     cfg.output = ConfigDict()
     cfg.output.save_samples = True
     cfg.output.save_dir = "output"
-    cfg.output.show_plots = True
 
     return cfg

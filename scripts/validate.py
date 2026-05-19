@@ -1,53 +1,65 @@
 #!/usr/bin/env python
-"""Validate nonstationary wind simulation against theoretical evolutionary PSD.
+"""Validate nonstationary simulation against theoretical evolutionary PSD.
 
-Compares ensemble-averaged local spectrograms and variance envelopes
-with the target evolutionary power spectral density.  Supports all
-backends.
+Uses ``ml_collections`` + ``absl.flags``.  No argparse — everything
+through ``--config.key=value``.
 
 Examples
 --------
-.. code-block:: bash
-
-    python scripts/validate.py --config configs/validate.py
-    python scripts/validate.py --n-points 50 --n-freqs 512 --n-realizations 16
+    python scripts/validate.py --config=configs/validate.py
+    python scripts/validate.py --config=configs/validate.py \
+        --config.params.N=512 --config.validation.n_realizations=16
 """
 
-import argparse
 import csv
 import logging
 import sys
 import time
 from pathlib import Path
 
+from absl import app
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ml_collections import ConfigDict, config_flags
 from stochastic_wind_simulate import (
-    NonstationaryWindSimulator,
-    WindVisualizer,
-    create_simulator,
+    NonstationaryWindSimulator, WindVisualizer, create_simulator,
 )
+
+_CONFIG = config_flags.DEFINE_config_file(
+    "config", None, "Path to config file", lock_config=False,
+)
+FLAGS = app.flags.FLAGS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Reuse the visualizer's implementations — no duplicated code.
-local_spectrogram = WindVisualizer._local_spectrogram
-windowed_variance = WindVisualizer._local_variance
-average_over_windows = WindVisualizer._average_over_windows
-average_over_freq_bands = WindVisualizer._average_over_freq_bands
+_DEFAULT_CONFIG = ConfigDict(dict(
+    backend="jax", spectrum="kaimal", seed=42,
+    params=dict(U_d=20.0, H_bar=20.0, z_0=0.01, alpha_0=0.12, w_up=5.0, N=1024),
+    spatial=dict(n_points=100, height=35.0),
+    wind=dict(speed=30.0, component="u"),
+    nonstationary=dict(mode="chunked-vmap", modulation_amplitude=0.2, max_memory_gb=8.0),
+    validation=dict(
+        n_realizations=32, point_index=0,
+        window_size=64, overlap=50, skip_low_freq_bins=1,
+        psd_snapshot_count=4,
+    ),
+    output_dir="output", show=False,
+))
+
+# Aliases to visualizer methods
+_local_spectrogram = WindVisualizer._local_spectrogram
+_local_variance = WindVisualizer._local_variance
+_average_over_windows = WindVisualizer._average_over_windows
+_average_over_freq_bands = WindVisualizer._average_over_freq_bands
 _window_mean_response = WindVisualizer._window_mean_response
 
-
-# ---------------------------------------------------------------------------
-# Error metrics
-# ---------------------------------------------------------------------------
 
 def psd_error_metrics(est, tgt, skip_low=1):
     e = est[skip_low:, :].reshape(-1)
@@ -66,12 +78,7 @@ def variance_error_metrics(est, tgt):
     return {"raw": raw, "scaled": scaled, "corr": corr, "scale": scale}
 
 
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
-
-def plot_validation(est_times, var_est, var_tgt,
-                    sig_times, sig,
+def plot_validation(est_times, var_est, var_tgt, sig_times, sig,
                     est_freqs, est_psd, tgt_psd_snap, snap_times,
                     skip_low, output_prefix, show):
     if not show:
@@ -84,18 +91,14 @@ def plot_validation(est_times, var_est, var_tgt,
     fig = plt.figure(figsize=(15, 10 + 3 * max(0, nrow - 1)))
     gs = fig.add_gridspec(2 + nrow, 2)
 
-    # Variance envelope
     ax_var = fig.add_subplot(gs[0, :])
     ax_var.plot(est_times, var_est, color="tab:blue", lw=1.8, label="Estimated")
     ax_var.plot(est_times, var_tgt, "--", color="tab:red", lw=2.0, label="Target")
     ax_var.set_title("Local Variance Envelope")
-    ax_var.set_ylabel("Variance")
-    ax_var.grid(True)
-    ax_var.legend()
+    ax_var.set_ylabel("Variance"); ax_var.grid(True); ax_var.legend()
     for tv in snap_times:
         ax_var.axvline(tv, color="0.4", linestyle=":", lw=0.9)
 
-    # Time history with std envelope
     est_std = np.sqrt(np.maximum(var_est, 0.0))
     tgt_std = np.sqrt(np.maximum(var_tgt, 0.0))
     est_std_full = np.interp(sig_times, est_times, est_std)
@@ -107,219 +110,119 @@ def plot_validation(est_times, var_est, var_tgt,
                          color="tab:red", alpha=0.16, label="Target std band")
     ax_time.plot(sig_times, tgt_std_full, "--", color="tab:red", lw=1.2)
     ax_time.plot(sig_times, -tgt_std_full, "--", color="tab:red", lw=1.2)
-    ax_time.plot(sig_times, est_std_full, color="tab:blue", lw=1.2, alpha=0.9,
-                 label="Est. std")
+    ax_time.plot(sig_times, est_std_full, color="tab:blue", lw=1.2, alpha=0.9, label="Est. std")
     ax_time.plot(sig_times, -est_std_full, color="tab:blue", lw=1.2, alpha=0.9)
     ax_time.set_title("Wind Time History with Local Std Envelope")
-    ax_time.set_xlabel("Time (s)")
-    ax_time.set_ylabel("Wind speed")
-    ax_time.grid(True)
-    ax_time.legend(ncol=2, fontsize=9)
+    ax_time.set_xlabel("Time (s)"); ax_time.set_ylabel("Wind speed")
+    ax_time.grid(True); ax_time.legend(ncol=2, fontsize=9)
     for tv in snap_times:
         ax_time.axvline(tv, color="0.4", linestyle=":", lw=0.9)
 
-    # PSD snapshots
     sl = slice(skip_low, None)
     for si in range(n_snap):
         ax = fig.add_subplot(gs[2 + si // ncol, si % ncol])
-        ax.plot(est_freqs[sl], est_psd[sl, si], color="tab:blue", lw=1.8,
-                label="Simulated")
-        ax.plot(est_freqs[sl], tgt_psd_snap[si, sl], "--", color="tab:red", lw=2.0,
-                label="Theory")
+        ax.plot(est_freqs[sl], est_psd[sl, si], color="tab:blue", lw=1.8, label="Simulated")
+        ax.plot(est_freqs[sl], tgt_psd_snap[si, sl], "--", color="tab:red", lw=2.0, label="Theory")
         ax.set_title(f"PSD at t = {snap_times[si]:.2f} s")
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("PSD")
-        ax.set_yscale("log")
-        ax.grid(True)
-        ax.legend(fontsize=9)
+        ax.set_xlabel("Frequency (Hz)"); ax.set_ylabel("PSD")
+        ax.set_yscale("log"); ax.grid(True); ax.legend(fontsize=9)
 
     fig.tight_layout()
     path = output_prefix.with_suffix(".png")
     fig.savefig(path, dpi=150)
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+    if show: plt.show()
+    else: plt.close(fig)
     return path
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+def main(_):
+    cfg = _CONFIG.value or _DEFAULT_CONFIG
+    backend = cfg.backend
+    spectrum = cfg.spectrum
+    params = cfg.params
+    spatial = cfg.spatial
+    wind = cfg.wind
+    ns_cfg = cfg.nonstationary
+    val = cfg.validation
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Validate nonstationary simulation")
-    p.add_argument("--config", type=str, default=None)
+    out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
 
-    p.add_argument("--backend", type=str, default="jax",
-                   choices=["jax", "numpy", "torch"])
-    p.add_argument("--spectrum", type=str, default="kaimal")
-    p.add_argument("--n-points", type=int, default=100)
-    p.add_argument("--n-freqs", type=int, default=1024)
-    p.add_argument("--n-realizations", type=int, default=32)
-    p.add_argument("--point-index", type=int, default=0)
-    p.add_argument("--window-size", type=int, default=64)
-    p.add_argument("--overlap", type=int, default=50)
-    p.add_argument("--w-up", type=float, default=5.0)
-    p.add_argument("--component", type=str, default="u", choices=["u", "w"])
-    p.add_argument("--mode", type=str, default="chunked-vmap",
-                   choices=["freq-for", "full-vmap", "chunked-vmap"])
-    p.add_argument("--max-memory-gb", type=float, default=8.0)
-    p.add_argument("--modulation-amplitude", type=float, default=0.2)
-    p.add_argument("--skip-low-freq-bins", type=int, default=1)
-    p.add_argument("--psd-snapshot-count", type=int, default=4)
-    p.add_argument("--output-dir", type=str, default="output")
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--show", action="store_true")
-    return p.parse_args()
-
-
-def _first(*vals):
-    for v in vals:
-        if v is not None:
-            return v
-    return None
-
-
-def main():
-    args = parse_args()
-
-    # Load config
-    if args.config:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("cfg", args.config)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        cfg = mod.get_config().to_dict()
-    else:
-        cfg = {}
-
-    backend = _first(args.backend, cfg.get("backend"), "jax")
-    spectrum = _first(args.spectrum, cfg.get("spectrum"), "kaimal")
-    params_cfg = cfg.get("params", {})
-    spatial_cfg = cfg.get("spatial", {})
-    wind_cfg = cfg.get("wind", {})
-    ns_cfg = cfg.get("nonstationary", {})
-    val_cfg = cfg.get("validation", {})
-
-    n_points = _first(args.n_points, spatial_cfg.get("n_points"), 100)
-    n_freqs = _first(args.n_freqs, params_cfg.get("N"), 1024)
-    n_real = _first(args.n_realizations, val_cfg.get("n_realizations"), 32)
-    pt_idx = _first(args.point_index, val_cfg.get("point_index"), 0)
-    win_size = _first(args.window_size, val_cfg.get("window_size"), 64)
-    overlap = _first(args.overlap, val_cfg.get("overlap"), 50)
-    w_up = _first(args.w_up, params_cfg.get("w_up"), 5.0)
-    component = _first(args.component, wind_cfg.get("component"), "u")
-    mode = _first(args.mode, ns_cfg.get("mode"), "chunked-vmap")
-    max_mem = _first(args.max_memory_gb, ns_cfg.get("max_memory_gb"), 8.0)
-    mod_amp = _first(args.modulation_amplitude,
-                     ns_cfg.get("modulation_amplitude"), 0.2)
-    skip_low = _first(args.skip_low_freq_bins,
-                      val_cfg.get("skip_low_freq_bins"), 1)
-    snap_count = _first(args.psd_snapshot_count,
-                        val_cfg.get("psd_snapshot_count"), 4)
-    out_dir = Path(_first(args.output_dir, cfg.get("output_dir"), "benchmark_results"))
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Build simulator
     sim = NonstationaryWindSimulator(
-        create_simulator(backend, spectrum, seed=args.seed,
-                         N=n_freqs, w_up=w_up,
-                         U_d=params_cfg.get("U_d", 20.0),
-                         H_bar=params_cfg.get("H_bar", 20.0),
-                         alpha_0=params_cfg.get("alpha_0", 0.12),
-                         z_0=params_cfg.get("z_0", 0.01))
-    )
+        create_simulator(backend, spectrum, seed=cfg.seed,
+                         N=params.N, w_up=params.w_up,
+                         U_d=params.U_d, H_bar=params.H_bar,
+                         z_0=params.z_0, alpha_0=params.alpha_0))
 
-    # Build positions
-    positions = np.zeros((n_points, 3), dtype=np.float32)
-    positions[:, 0] = np.linspace(0.0, 1000.0, n_points)
-    positions[:, 1] = 5.0
-    positions[:, 2] = spatial_cfg.get("height", 35.0)
-    wind_speeds = np.full(n_points, wind_cfg.get("speed", 30.0), dtype=np.float32)
+    positions = np.zeros((spatial.n_points, 3), dtype=np.float32)
+    positions[:, 0] = np.linspace(0.0, 1000.0, spatial.n_points)
+    positions[:, 1] = 5.0; positions[:, 2] = spatial.height
+    wind_speeds = np.full(spatial.n_points, wind.speed, dtype=np.float32)
 
-    dt = sim.params.dt
-    M = sim.params.M
+    dt = sim.params.dt; M = sim.params.M
     times = np.arange(M) * dt
-    mod_vals = 1.0 + mod_amp * np.sin(2.0 * np.pi * times / sim.params.T)
+    mod_vals = 1.0 + ns_cfg.modulation_amplitude * np.sin(
+        2.0 * np.pi * times / sim.params.T)
 
-    # Target theoretical PSD (via visualizer's double-vmap helper)
     logger.info("Computing target evolutionary PSD...")
-    target_freqs = np.arange(1, n_freqs + 1) * sim.params.dw - sim.params.dw / 2.0
+    target_freqs = np.arange(1, params.N + 1) * sim.params.dw - sim.params.dw / 2.0
     viz = WindVisualizer(sim)
     tgt_psd_full = viz._compute_evolutionary_psd_full(
         target_freqs, positions[:, 2], wind_speeds,
-        component, mod_vals,
-    )
+        wind.component, mod_vals)
 
-    # Ensemble simulations
     spec_list, var_list = [], []
     repr_signal = None
     t0 = time.time()
 
-    for ri in range(n_real):
-        logger.info("Realization %d/%d", ri + 1, n_real)
+    for ri in range(val.n_realizations):
+        logger.info("Realization %d/%d", ri + 1, val.n_realizations)
         samples, _ = sim.simulate_nonstationary(
-            positions, wind_speeds, component=component,
-            mode=mode, modulation_amplitude=mod_amp,
+            positions, wind_speeds, component=wind.component,
+            mode=ns_cfg.mode, modulation_amplitude=ns_cfg.modulation_amplitude,
             modulation_values=mod_vals,
-            max_memory_gb=max_mem, auto_batch=True,
+            max_memory_gb=ns_cfg.max_memory_gb, auto_batch=True,
         )
-        sig = samples[pt_idx]
+        sig = samples[val.point_index]
         if repr_signal is None:
             repr_signal = sig.copy()
 
-        ef, et, spec = local_spectrogram(sig, dt, win_size, overlap)
+        ef, et, spec = _local_spectrogram(sig, dt, val.window_size, val.overlap)
         spec_list.append(spec)
-        var_list.append(windowed_variance(sig, win_size, overlap))
+        var_list.append(_local_variance(sig, val.window_size, val.overlap))
 
     est_psd = np.mean(np.stack(spec_list, axis=0), axis=0)
     est_var = np.mean(np.stack(var_list, axis=0), axis=0)
-    ef_vals = ef  # from last realization
 
-    # Target processed through same windowing
-    pt_tgt = tgt_psd_full[:, :, pt_idx]
-    tgt_win = average_over_windows(pt_tgt, times, et, dt, win_size)
-    tgt_resampled = average_over_freq_bands(target_freqs, tgt_win, ef_vals)
+    pt_tgt = tgt_psd_full[:, :, val.point_index]
+    tgt_win = _average_over_windows(pt_tgt, times, et, dt, val.window_size)
+    tgt_resampled = _average_over_freq_bands(target_freqs, tgt_win, ef)
     tgt_psd_comp = tgt_resampled.T
 
-    # Snapshot times
-    snap_idx = np.linspace(0, len(et) - 1, snap_count).astype(int)
+    snap_idx = np.linspace(0, len(et) - 1, val.psd_snapshot_count).astype(int)
     snap_times = et[snap_idx]
     snap_est = est_psd[:, snap_idx]
-    snap_tgt = average_over_freq_bands(
+    snap_tgt = _average_over_freq_bands(
         target_freqs,
-        np.stack([pt_tgt[int(np.argmin(np.abs(times - tv)))] for tv in snap_times], axis=0),
-        ef_vals,
-    )
+        np.stack([pt_tgt[int(np.argmin(np.abs(times - tv)))]
+                  for tv in snap_times], axis=0), ef)
 
-    # Target variance
-    tgt_var = np.array([
-        np.trapezoid(
-            tgt_win[ti] * (1.0 - _window_mean_response(target_freqs, dt, win_size)),
-            target_freqs,
-        )
-        for ti in range(len(et))
-    ])
+    mean_resp = _window_mean_response(target_freqs, dt, val.window_size)
+    tgt_var = np.array([np.trapezoid(
+        tgt_win[ti] * (1.0 - mean_resp), target_freqs)
+        for ti in range(len(et))])
 
-    # Error metrics
-    psd_err = psd_error_metrics(est_psd, tgt_psd_comp, skip_low)
+    psd_err = psd_error_metrics(est_psd, tgt_psd_comp, val.skip_low_freq_bins)
     var_err = variance_error_metrics(est_var, tgt_var)
 
-    # Plot
     ts = time.strftime("%Y%m%d_%H%M%S")
-    prefix = out_dir / f"validation_{backend}_{mode}_{ts}"
+    prefix = out_dir / f"validation_{backend}_{ns_cfg.mode}_{ts}"
     fig_path = plot_validation(
-        et, est_var, tgt_var,
-        times, repr_signal,
-        ef_vals, snap_est, snap_tgt,
-        snap_times, skip_low, prefix, args.show,
-    )
+        et, est_var, tgt_var, times, repr_signal,
+        ef, snap_est, snap_tgt, snap_times,
+        val.skip_low_freq_bins, prefix, cfg.get("show", False))
 
-    # Save summary
     csv_path = prefix.with_suffix(".csv")
-    with open(csv_path, "w", newline="") as f:
+    with csv_path.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=[
             "backend", "mode", "n_points", "n_freqs", "n_realizations",
             "psd_error_raw", "psd_error_scaled", "psd_scale",
@@ -327,20 +230,19 @@ def main():
             "elapsed_s", "figure",
         ])
         w.writeheader()
-        w.writerow({
-            "backend": backend, "mode": mode,
-            "n_points": n_points, "n_freqs": n_freqs,
-            "n_realizations": n_real,
-            "psd_error_raw": f"{psd_err['raw']:.6e}",
-            "psd_error_scaled": f"{psd_err['scaled']:.6e}",
-            "psd_scale": f"{psd_err['scale']:.6e}",
-            "var_error_raw": f"{var_err['raw']:.6e}",
-            "var_error_scaled": f"{var_err['scaled']:.6e}",
-            "var_corr": f"{var_err['corr']:.6e}",
-            "var_scale": f"{var_err['scale']:.6e}",
-            "elapsed_s": f"{time.time() - t0:.3f}",
-            "figure": str(fig_path),
-        })
+        w.writerow(dict(
+            backend=backend, mode=ns_cfg.mode,
+            n_points=spatial.n_points, n_freqs=params.N,
+            n_realizations=val.n_realizations,
+            psd_error_raw=f"{psd_err['raw']:.6e}",
+            psd_error_scaled=f"{psd_err['scaled']:.6e}",
+            psd_scale=f"{psd_err['scale']:.6e}",
+            var_error_raw=f"{var_err['raw']:.6e}",
+            var_error_scaled=f"{var_err['scaled']:.6e}",
+            var_corr=f"{var_err['corr']:.6e}",
+            var_scale=f"{var_err['scale']:.6e}",
+            elapsed_s=f"{time.time() - t0:.3f}", figure=str(fig_path),
+        ))
 
     logger.info("Validation done in %.1f s", time.time() - t0)
     logger.info("PSD error: raw=%.4e  scaled=%.4e (x%.2f)",
@@ -351,14 +253,5 @@ def main():
     logger.info("Summary: %s", csv_path)
 
 
-def _window_mean_response(freqs, dt, win_size):
-    """Window mean-response for target variance."""
-    nf = np.asarray(freqs, dtype=np.float64) * dt
-    k = np.exp(-1j * np.pi * (win_size - 1) * nf)
-    k = k * win_size * (np.sinc(win_size * nf) / np.sinc(nf))
-    k[np.isclose(nf, 0.0)] = float(win_size) + 0.0j
-    return np.abs(k / win_size) ** 2
-
-
 if __name__ == "__main__":
-    main()
+    app.run(main)

@@ -34,25 +34,38 @@ conda activate jaxenv   # or your preferred environment
 
 ### Command-line
 
+All parameters live in config files.  Override anything with ``--config.key=value``:
+
 ```bash
-# Stationary simulation (JAX, 100 points, 3000 frequencies)
-python scripts/simulate.py --backend jax --n-points 100 --N 3000
+# Stationary (default config)
+python scripts/simulate.py --config=configs/default.py
 
-# Nonstationary with modulation
-python scripts/simulate.py --backend jax --n-points 50 --N 1024 --nonstationary --modulation-amplitude 0.3
+# Override parameters
+python scripts/simulate.py --config=configs/default.py \
+    --config.params.N=5000 --config.spatial.n_points=200
 
-# Use a config file
-python scripts/simulate.py --config configs/default.py
-python scripts/simulate.py --config configs/nonstationary.py --nonstationary
+# Nonstationary
+python scripts/simulate.py --config=configs/nonstationary.py
+
+python scripts/simulate.py --config=configs/default.py \
+    --config.nonstationary.enabled=True \
+    --config.nonstationary.modulation_amplitude=0.3
 
 # Benchmark frequency scaling
-python scripts/benchmark.py --backends jax numpy --freqs 100,500,1000,5000 --n-points 100
+python scripts/benchmark.py --config=configs/benchmark_freq.py
 
 # Benchmark point scaling
-python scripts/benchmark.py --bench-type points --backends jax --sizes 10,50,100,500 --n-freqs 3000
+python scripts/benchmark.py --config=configs/benchmark_points.py
 
-# Validate nonstationary against theoretical EPSD
-python scripts/validate.py --backend jax --n-points 100 --n-freqs 1024 --n-realizations 32
+# Override benchmark parameters
+python scripts/benchmark.py --config=configs/benchmark_freq.py \
+    --config.backends=jax,numpy --config.test_frequencies=100,500,1000
+
+# Validate nonstationary
+python scripts/validate.py --config=configs/validate.py
+
+python scripts/validate.py --config=configs/validate.py \
+    --config.params.N=512 --config.validation.n_realizations=16
 ```
 
 ### Python API
@@ -81,10 +94,17 @@ samples_ns, freqs_ns = ns.simulate_nonstationary(
     max_memory_gb=8.0,
 )
 
-# --- Visualisation ---
+# --- Visualisation (stationary) ---
 viz = WindVisualizer(sim)
 viz.plot_psd(samples, positions[:, 2], show_num=6, component="u")
 viz.plot_cross_correlation(samples, positions, wind_speeds, component="u", indices=(1, 5))
+
+# --- Visualisation (nonstationary: short-time Fourier) ---
+viz_ns = WindVisualizer(ns)
+viz_ns.plot_nonstationary_psd(
+    samples_ns[0], height=35.0, wind_speed=30.0, component="u",
+    window_size=64, overlap=50, snapshot_count=4,
+)
 ```
 
 ### Wind Spectrum Models
@@ -110,7 +130,6 @@ sim = create_simulator("jax", "teunissen", seed=42, N=3000)
 | `C_x, C_y, C_z` | 16, 6, 10 | Davenport decay coefficients |
 | `w_up` | 5.0 | Cutoff frequency [Hz] |
 | `N` | 3000 | Number of frequency segments |
-| `z_max` | 450.0 | Max height for wind profile [m] |
 
 Computed automatically: `M = 2N`, `T = N/w_up`, `dt = T/M`, `dw = w_up/N`, `z_d = H_bar - z_0/K`.
 
@@ -131,27 +150,38 @@ def get_config() -> ConfigDict:
     cfg.backend = "jax"
     cfg.spectrum = "kaimal"
     cfg.seed = 42
+    cfg.component = "u"
+
     cfg.params = ConfigDict()
-    cfg.params.U_d = 20.0
-    cfg.params.N = 3000
-    cfg.params.w_up = 5.0
+    cfg.params.U_d = 20.0; cfg.params.H_bar = 20.0
+    cfg.params.alpha_0 = 0.12; cfg.params.z_0 = 0.01
+    cfg.params.w_up = 5.0; cfg.params.N = 3000
+
     cfg.spatial = ConfigDict()
-    cfg.spatial.n_points = 100
-    cfg.spatial.z = 35.0
+    cfg.spatial.n_points = 100; cfg.spatial.z = 35.0
     cfg.spatial.wind_speed = 30.0
+
+    cfg.nonstationary = ConfigDict()
+    cfg.nonstationary.enabled = False
+
     cfg.memory = ConfigDict()
     cfg.memory.max_memory_gb = 4.0
     cfg.memory.auto_batch = True
+
+    cfg.visualization = ConfigDict()
+    cfg.visualization.show_plots = True
+
     cfg.output = ConfigDict()
+    cfg.output.save_samples = True
     cfg.output.save_dir = "output"
-    cfg.output.show_plots = True
     return cfg
 ```
 
-CLI arguments override config values:
+CLI arguments override config values via dotted notation:
 
 ```bash
-python scripts/simulate.py --config configs/default.py --n-points 200 --backend numpy
+python scripts/simulate.py --config=configs/default.py \
+    --config.spatial.n_points=200 --config.backend=numpy
 ```
 
 ### Custom Spectrum
@@ -176,18 +206,23 @@ sim = JaxWindSimulator(key=42, spectrum_type=MySpectrum, N=3000)
 
 ```
 src/stochastic_wind_simulate/
-├── simulator.py       # _BaseSimulator + JaxWindSimulator / NumpyWindSimulator / TorchWindSimulator
-├── nonstationary.py   # NonstationaryWindSimulator (wraps a stationary simulator)
+├── simulator.py       # _BaseSimulator + Jax/Numpy/TorchWindSimulator
+├── nonstationary.py   # NonstationaryWindSimulator (wraps a stationary sim)
 ├── spectrum.py        # Kaimal, Panofsky, Teunissen (backend-agnostic)
 ├── coherence.py       # Davenport coherence model
 ├── params.py          # SimulationParams dataclass
-└── visualizer.py      # PSD and cross-correlation plots
+└── visualizer.py      # Stationary (Welch) + nonstationary (STFT) plots
 
 configs/               # ml_collections config presets
 scripts/
 ├── simulate.py        # Stationary & nonstationary, all backends
 ├── benchmark.py       # Frequency & point scaling benchmarks
 └── validate.py        # Nonstationary EPSD validation
+
+examples/
+├── basic_usage.py     # Minimal stationary example
+├── custom_spectrum.py # Custom spectrum class
+└── nonstationary_custom_psd.py  # Custom evolutionary PSD
 ```
 
 ### Design: One shared algorithm, three thin backends

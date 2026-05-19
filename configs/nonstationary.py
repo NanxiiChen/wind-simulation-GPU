@@ -9,8 +9,8 @@ def get_config() -> ConfigDict:
     cfg.backend = "jax"
     cfg.spectrum = "kaimal"
     cfg.seed = 42
+    cfg.component = "u"
 
-    # Simulation parameters
     cfg.params = ConfigDict()
     cfg.params.U_d = 20.0
     cfg.params.H_bar = 20.0
@@ -19,33 +19,32 @@ def get_config() -> ConfigDict:
     cfg.params.w_up = 5.0
     cfg.params.N = 1024
 
-    # Spatial
     cfg.spatial = ConfigDict()
     cfg.spatial.n_points = 100
-    cfg.spatial.height = 35.0
+    cfg.spatial.z = 35.0
+    cfg.spatial.wind_speed = 30.0
 
-    # Wind
-    cfg.wind = ConfigDict()
-    cfg.wind.speed = 30.0
-    cfg.wind.component = "u"
-
-    # Nonstationary
     cfg.nonstationary = ConfigDict()
+    cfg.nonstationary.enabled = True
     cfg.nonstationary.mode = "chunked-vmap"
     cfg.nonstationary.modulation_amplitude = 0.2
     cfg.nonstationary.max_memory_gb = 8.0
+    cfg.nonstationary.auto_batch = True
+    cfg.nonstationary.freq_batch_size = None
 
-    # Visualisation (nonstationary uses short-time Fourier)
+    cfg.memory = ConfigDict()
+    cfg.memory.max_memory_gb = 4.0
+    cfg.memory.auto_batch = True
+
     cfg.visualization = ConfigDict()
-    cfg.visualization.point_index = 0    # which spatial point to plot
-    cfg.visualization.window_size = 64   # STFT window [samples]
-    cfg.visualization.overlap = 50       # overlap [samples]
-    cfg.visualization.snapshot_count = 4 # PSD snapshots to show
+    cfg.visualization.point_index = 0
+    cfg.visualization.window_size = 64
+    cfg.visualization.overlap = 50
+    cfg.visualization.snapshot_count = 4
+    cfg.visualization.show_plots = True
 
-    # Output
     cfg.output = ConfigDict()
     cfg.output.save_samples = True
     cfg.output.save_dir = "output"
-    cfg.output.show_plots = True
 
     return cfg
