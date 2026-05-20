@@ -257,10 +257,8 @@ The nonstationary algorithm uses **jit-then-vmap** (for JAX) applied to local fu
 
 ```bibtex
 @article{chen5707657high,
-  title={A high-performance fully parallelized framework for stochastic wind field simulation:
-         open-source implementations and engineering applications},
-  author={Chen, Nanxi and Liu, Guilin and Zhang, Junrui and Ma, Rujin and
-          Chang, Haocheng and Zhu, Yan and Qiu, Xu and Chen, Airong},
+  title={Reconciling the accuracy-efficiency trade-off in stochastic wind field simulation: a dual-level parallel algorithmic perspective},
+  author={Chen, Nanxi and Liu, Guilin and Zhang, Junrui and Ma, Rujin and Chang, Haocheng and Zhu, Yan and Qiu, Xu and Chen, Airong},
   journal={Available at SSRN 5707657}
 }
 ```
