@@ -35,7 +35,7 @@ pip install "jax[cpu]"   # for CPU
 
 ### Claude Code Skill
 
-`SKILL.md` (at the repository root) is a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills) that gives the agent full context on architecture, design patterns, commands, and common pitfalls — so new users and developers can use and modify the library through the agent without reading the entire codebase.
+We also provide a `SKILL.md` file for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), which gives the agent full context on the library's architecture, design patterns, commands, and common pitfalls. This allows new users and developers to interact with and modify the library through the agent without needing to read the entire codebase.
 
 To install it in your project:
 
