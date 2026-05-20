@@ -21,6 +21,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 img/
+.claude/
 
 # C extensions
 *.so
