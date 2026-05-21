@@ -33,15 +33,22 @@ pip install "jax[cuda12]"  # for GPU (with CUDA 12)
 pip install "jax[cpu]"   # for CPU
 ```
 
-### Claude Code Skill
+### Agent Skill
 
-We also provide a `SKILL.md` file for use with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), which gives the agent full context on the library's architecture, design patterns, commands, and common pitfalls. This allows new users and developers to interact with and modify the library through the agent without needing to read the entire codebase.
+We also provide a `SKILL.md` file that gives AI coding agents full context on the library's architecture, design patterns, commands, and common pitfalls — so new users and developers can use and modify the library through the agent without reading the entire codebase.
 
-To install it in your project:
+**Claude Code:**
 
 ```bash
 mkdir -p .claude/skills/wind-sim
 cp SKILL.md .claude/skills/wind-sim/
+```
+
+**OpenAI Codex CLI:**
+
+```bash
+mkdir -p .codex/skills/wind-sim
+cp SKILL.md .codex/skills/wind-sim/
 ```
 
 Claude Code auto-detects the skill when working in that directory. It triggers when you mention wind simulation, the scripts, benchmarks, or any file under `src/stochastic_wind_simulate/`.
