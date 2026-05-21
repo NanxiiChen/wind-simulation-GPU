@@ -271,12 +271,10 @@ ns  = NonstationaryWindSimulator(sim)
 samples, freqs = ns.simulate_nonstationary(...)
 ```
 
-The nonstationary algorithm uses **jit-then-vmap** (for JAX) applied to local functions defined once and reused across chunks — matching the original code's performance characteristics.
-
 ## Citation
 
 ```bibtex
-@article{chen5707657high,
+@article{chen5707657,
   title={Reconciling the accuracy-efficiency trade-off in stochastic wind field simulation: a dual-level parallel algorithmic perspective},
   author={Chen, Nanxi and Liu, Guilin and Zhang, Junrui and Ma, Rujin and Chang, Haocheng and Zhu, Yan and Qiu, Xu and Chen, Airong},
   journal={Available at SSRN 5707657}
