@@ -54,12 +54,11 @@ def run_case(backend, n_points, n_freqs, use_batching, max_memory_gb, seed):
 
     sim = create_simulator(backend, "kaimal", seed=seed, N=n_freqs, w_up=5.0)
     est_mem = sim.estimate_memory(n_points, n_freqs)
-    batch_mem = 0.1 if use_batching else 16.0
 
     try:
         t0 = time.time()
         sim.simulate_wind(positions, wind_speeds, "u",
-                          max_memory_gb=batch_mem, auto_batch=use_batching)
+                          max_memory_gb=max_memory_gb, auto_batch=use_batching)
         return time.time() - t0, est_mem, use_batching and est_mem > max_memory_gb
     except Exception as e:
         logger.error("%s n=%d N=%d: %s", backend, n_points, n_freqs, e)
