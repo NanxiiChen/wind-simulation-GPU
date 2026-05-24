@@ -66,12 +66,12 @@ All parameters live in config files.  Override anything with ``--config.key=valu
 
 ```bash
 # Stationary (default config)
-python scripts/simulate.py --config=configs/default.py --conifg.backend=numpy
+python scripts/simulate.py --config=configs/default.py --config.backend=numpy
 
 # Override parameters
 python scripts/simulate.py --config=configs/default.py \
     --config.params.N=5000 --config.spatial.n_points=200 \
-    --conifg.backend=jax
+    --config.backend=jax
 
 # Nonstationary
 python scripts/simulate.py --config=configs/nonstationary.py
