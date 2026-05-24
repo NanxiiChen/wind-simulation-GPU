@@ -33,6 +33,11 @@ pip install "jax[cuda12]"  # for GPU (with CUDA 12)
 pip install "jax[cpu]"   # for CPU
 ```
 
+Other dependencies:
+```bash
+pip install ml_collections matplotlib
+```
+
 ### Agent Skill
 
 We also provide a `SKILL.md` file that gives AI coding agents full context on the library's architecture, design patterns, commands, and common pitfalls — so new users and developers can use and modify the library through the agent without reading the entire codebase.
@@ -61,11 +66,12 @@ All parameters live in config files.  Override anything with ``--config.key=valu
 
 ```bash
 # Stationary (default config)
-python scripts/simulate.py --config=configs/default.py
+python scripts/simulate.py --config=configs/default.py --conifg.backend=numpy
 
 # Override parameters
 python scripts/simulate.py --config=configs/default.py \
-    --config.params.N=5000 --config.spatial.n_points=200
+    --config.params.N=5000 --config.spatial.n_points=200 \
+    --conifg.backend=jax
 
 # Nonstationary
 python scripts/simulate.py --config=configs/nonstationary.py
