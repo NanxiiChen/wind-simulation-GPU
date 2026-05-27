@@ -1,5 +1,8 @@
 # Fully Parallelized Stochastic Wind Field Simulation Framework
 
+[![Gitee](https://img.shields.io/badge/Gitee-mirror-red)](https://gitee.com/nanxi_chen/wind-simulation-gpu)
+[![Paper](https://img.shields.io/badge/Paper-SSNR-blue)](https://www.researchgate.net/publication/397308647_Reconciling_the_accuracy-efficiency_trade-off_in_stochastic_wind_field_simulation_a_dual-level_parallel_algorithmic_perspective)
+
 A high-performance framework for stationary and non-stationary stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
 Note: a stable version of this code is on the `main` branch, which is no longer maintained. The `dev` branch contains the latest features and improvements, but may be less stable. Please choose the branch that best suits your needs.
@@ -21,7 +24,8 @@ Stochastic wind field simulation is extensively utilized in civil and wind engin
 Clone the repository and install the package in editable mode:
 
 ```bash
-git clone -b dev --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git
+git clone -b dev --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git # Github repo
+git clone -b dev --depth=1 https://gitee.com/nanxi_chen/wind-simulation-gpu.git # or use Gitee repo
 cd wind-simulation-GPU
 pip install -e .
 ```
