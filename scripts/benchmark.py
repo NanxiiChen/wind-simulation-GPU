@@ -14,36 +14,24 @@ Examples
 
 import csv
 import logging
-import sys
 import time
 from pathlib import Path
 
 from absl import app
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ml_collections import ConfigDict, config_flags
+from ml_collections import config_flags
 from stochastic_wind_simulate import create_simulator
 
 _CONFIG = config_flags.DEFINE_config_file(
-    "config", None, "Path to config file", lock_config=False,
+    "config", "configs/benchmark_freq", "Path to config file", lock_config=False,
 )
-FLAGS = app.flags.FLAGS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-_DEFAULT_CONFIG = ConfigDict(dict(
-    bench_type="freq", backends=["jax"], modes=["batched"],
-    max_memory_gb=2.0, n_points=100, n_frequency=3000, seed=42,
-    test_frequencies=[50, 100, 200, 500, 1000, 2000, 5000],
-    test_sizes=[2, 10, 25, 50, 100, 200, 500, 1000],
-    params=dict(U_d=25.0, w_up=5.0, T=600.0),
-    output_dir="benchmark_results",
-))
 
 
 def run_case(backend, n_points, n_freqs, use_batching, max_memory_gb, seed):
@@ -66,7 +54,7 @@ def run_case(backend, n_points, n_freqs, use_batching, max_memory_gb, seed):
 
 
 def main(_):
-    cfg = _CONFIG.value or _DEFAULT_CONFIG
+    cfg = _CONFIG.value
     params = cfg.params
     out_dir = Path(cfg.output_dir); out_dir.mkdir(parents=True, exist_ok=True)
 

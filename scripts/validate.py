@@ -13,7 +13,6 @@ Examples
 
 import csv
 import logging
-import sys
 import time
 from pathlib import Path
 
@@ -22,36 +21,19 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from ml_collections import ConfigDict, config_flags
+from ml_collections import config_flags
 from stochastic_wind_simulate import (
     NonstationaryWindSimulator, WindVisualizer, create_simulator,
 )
 
 _CONFIG = config_flags.DEFINE_config_file(
-    "config", None, "Path to config file", lock_config=False,
+    "config", "configs/validate.py", "Path to config file", lock_config=False,
 )
-FLAGS = app.flags.FLAGS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-_DEFAULT_CONFIG = ConfigDict(dict(
-    backend="jax", spectrum="kaimal", seed=42,
-    params=dict(U_d=20.0, H_bar=20.0, z_0=0.01, alpha_0=0.12, w_up=5.0, N=1024),
-    spatial=dict(n_points=100, height=35.0),
-    wind=dict(speed=30.0, component="u"),
-    nonstationary=dict(mode="chunked-vmap", modulation_amplitude=0.2, max_memory_gb=8.0),
-    validation=dict(
-        n_realizations=32, point_index=0,
-        window_size=64, overlap=50, skip_low_freq_bins=1,
-        psd_snapshot_count=4,
-    ),
-    output_dir="output", show=False,
-))
 
 # Aliases to visualizer methods
 _local_spectrogram = WindVisualizer._local_spectrogram
@@ -136,7 +118,7 @@ def plot_validation(est_times, var_est, var_tgt, sig_times, sig,
 
 
 def main(_):
-    cfg = _CONFIG.value or _DEFAULT_CONFIG
+    cfg = _CONFIG.value
     backend = cfg.backend
     spectrum = cfg.spectrum
     params = cfg.params

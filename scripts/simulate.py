@@ -15,44 +15,30 @@ Examples
 """
 
 import logging
-import sys
 import time
 from pathlib import Path
 
 from absl import app
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from ml_collections import ConfigDict, config_flags
+from ml_collections import config_flags
 from stochastic_wind_simulate import (
     NonstationaryWindSimulator, WindVisualizer, create_simulator,
 )
 
 _CONFIG = config_flags.DEFINE_config_file(
-    "config", None, "Path to config file", lock_config=False,
+    "config", "configs/default.py", "Path to config file", lock_config=False,
 )
-FLAGS = app.flags.FLAGS
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-_DEFAULT_CONFIG = ConfigDict(dict(
-    backend="jax", spectrum="kaimal", seed=42, component="u",
-    params=dict(U_d=20.0, H_bar=20.0, z_0=0.01, alpha_0=0.12, w_up=5.0, N=3000),
-    spatial=dict(n_points=100, z=35.0, wind_speed=30.0),
-    nonstationary=dict(enabled=False, mode="chunked-vmap", modulation_amplitude=0.2),
-    memory=dict(max_memory_gb=4.0, auto_batch=True, freq_batch_size=None),
-    visualization=dict(point_index=0, window_size=64, overlap=50, snapshot_count=4,
-                       show_plots=True),
-    output=dict(save_samples=True, save_dir="output"),
-))
-
 
 def main(_):
-    cfg = _CONFIG.value or _DEFAULT_CONFIG
+    cfg = _CONFIG.value
     backend = cfg.backend
     spectrum = cfg.spectrum
     seed = cfg.seed
