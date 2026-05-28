@@ -21,7 +21,15 @@ Stochastic wind field simulation is extensively utilized in civil and wind engin
 
 ## Installation
 
-Clone the repository and install the package in editable mode:
+### Online trial
+
+We provide a Google Colab notebook for quick online experimentation without any local setup.  Click the badge below to open it:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1uGForghIGKL-5xTcpMUj0SBOjYeKZ7X6?usp=sharing)
+
+### Local installation
+
+For real projects and development, we recommend installing the package locally. Clone the repository and install the package in editable mode:
 
 ```bash
 git clone -b dev --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git # Github repo
