@@ -2,6 +2,7 @@
 
 [![Gitee](https://img.shields.io/badge/Gitee-mirror-red)](https://gitee.com/nanxi_chen/wind-simulation-gpu)
 [![Paper](https://img.shields.io/badge/Paper-SSNR-blue)](https://www.researchgate.net/publication/397308647_Reconciling_the_accuracy-efficiency_trade-off_in_stochastic_wind_field_simulation_a_dual-level_parallel_algorithmic_perspective)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1uGForghIGKL-5xTcpMUj0SBOjYeKZ7X6?usp=sharing)
 
 A high-performance framework for stationary and non-stationary stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
