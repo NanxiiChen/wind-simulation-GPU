@@ -1,13 +1,13 @@
 # Fully Parallelized Stochastic Wind Field Simulation Framework
 
 [![Gitee](https://img.shields.io/badge/Gitee-mirror-red)](https://gitee.com/nanxi_chen/wind-simulation-gpu)
-[![Paper](https://img.shields.io/badge/Paper-SSNR-blue)](https://www.researchgate.net/publication/397308647_Reconciling_the_accuracy-efficiency_trade-off_in_stochastic_wind_field_simulation_a_dual-level_parallel_algorithmic_perspective)
+[![Paper](https://img.shields.io/badge/Paper-MSSP-blue)](https://doi.org/10.1016/j.ymssp.2026.114603)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1uGForghIGKL-5xTcpMUj0SBOjYeKZ7X6?usp=sharing)
 [![Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://www.kaggle.com/code/nanxiichen/wind-simulation)
 
 A high-performance framework for stationary and non-stationary stochastic wind field simulation based on Shinozuka's harmonic synthesis method, delivering significant computational speedups for wind engineering applications.
 
-Note: a stable version of this code is on the `main` branch, which is no longer maintained. The `dev` branch contains the latest features and improvements, but may be less stable. Please choose the branch that best suits your needs.
+Note: a stable version of this code is on the `legacy` branch, which is no longer maintained. The `main` branch contains the latest features and improvements. Please choose the branch that best suits your needs.
 
 ## Overview
 
@@ -35,8 +35,8 @@ We provide Google Colab and Kaggle notebooks for quick online experimentation wi
 For real projects and development, we recommend installing the package locally. Clone the repository and install the package in editable mode:
 
 ```bash
-git clone -b dev --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git # Github repo
-git clone -b dev --depth=1 https://gitee.com/nanxi_chen/wind-simulation-gpu.git # or use Gitee repo
+git clone -b main --depth=1 https://github.com/NanxiiChen/wind-simulation-GPU.git # Github repo
+git clone -b main --depth=1 https://gitee.com/nanxi_chen/wind-simulation-gpu.git # or use Gitee repo
 cd wind-simulation-GPU
 pip install -e .
 ```
@@ -295,9 +295,16 @@ samples, freqs = ns.simulate_nonstationary(...)
 ## Citation
 
 ```bibtex
-@article{chen5707657,
-  title={Reconciling the accuracy-efficiency trade-off in stochastic wind field simulation: a dual-level parallel algorithmic perspective},
-  author={Chen, Nanxi and Liu, Guilin and Zhang, Junrui and Ma, Rujin and Chang, Haocheng and Zhu, Yan and Qiu, Xu and Chen, Airong},
-  journal={Available at SSRN 5707657}
+@article{CHEN2026114603,
+  title = {Reconciling the accuracy-efficiency trade-off in stochastic wind field simulation: A dual-level parallel algorithmic perspective},
+  journal = {Mechanical Systems and Signal Processing},
+  volume = {258},
+  pages = {114603},
+  year = {2026},
+  issn = {0888-3270},
+  doi = {https://doi.org/10.1016/j.ymssp.2026.114603},
+  url = {https://www.sciencedirect.com/science/article/pii/S0888327026007600},
+  author = {Nanxi Chen and Guilin Liu and Junrui Zhang and Rujin Ma and Haocheng Chang and Yan Zhu and Xu Qiu and Airong Chen},
+  keywords = {Stochastic wind field simulation, Spectral representation, Harmonic synthesis method, Parallel computing, GPU acceleration},
 }
 ```
