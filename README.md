@@ -1,6 +1,6 @@
 # Fully Parallelized Stochastic Wind Field Simulation Framework
 
-[![Gitee](https://img.shields.io/badge/Gitee-mirror-red)](https://gitee.com/nanxi_chen/wind-simulation-gpu)
+[![Gitee](https://img.shields.io/badge/Mirror-Gitee-red)](https://gitee.com/nanxi_chen/wind-simulation-gpu)
 [![Paper](https://img.shields.io/badge/Paper-MSSP-blue)](https://doi.org/10.1016/j.ymssp.2026.114603)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1uGForghIGKL-5xTcpMUj0SBOjYeKZ7X6?usp=sharing)
 [![Kaggle](https://kaggle.com/static/images/open-in-kaggle.svg)](https://www.kaggle.com/code/nanxiichen/wind-simulation)
@@ -291,6 +291,39 @@ sim = create_simulator("jax", "kaimal", seed=42, N=1024)  # any backend
 ns  = NonstationaryWindSimulator(sim)
 samples, freqs = ns.simulate_nonstationary(...)
 ```
+
+## Developer Guide
+
+If you just want to use or modify the library for your own work, follow [Local installation](#local-installation) above. This section is for those who want to contribute changes back to this repository.
+
+### Fork & clone (one-time)
+
+Click **Fork** on the [repository page](https://github.com/NanxiiChen/wind-simulation-GPU), then:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/wind-simulation-GPU.git
+cd wind-simulation-GPU
+git remote add upstream https://github.com/NanxiiChen/wind-simulation-GPU.git
+```
+
+### Typical workflow
+
+```bash
+# sync upstream changes
+git fetch upstream
+git checkout main
+git merge upstream/main
+git push origin main
+
+# make your changes in a new branch
+git checkout -b my-feature
+# ... edit code ...
+git add .
+git commit -m "brief description"
+git push origin my-feature
+```
+
+Then go to your fork on GitHub and click **Compare & pull request**.
 
 ## Citation
 
