@@ -296,6 +296,8 @@ samples, freqs = ns.simulate_nonstationary(...)
 
 If you just want to use or modify the library for your own work, follow [Local installation](#local-installation) above. This section is for those who want to contribute changes back to this repository.
 
+If you have a feature request, an idea for improvement, or a TODO you'd like to see addressed, feel free to [open an issue](https://github.com/NanxiiChen/wind-simulation-GPU/issues) — contributions and suggestions are always welcome.
+
 ### Fork & clone (one-time)
 
 Click **Fork** on the [repository page](https://github.com/NanxiiChen/wind-simulation-GPU), then:
