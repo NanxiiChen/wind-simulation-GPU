@@ -295,7 +295,7 @@ samples, freqs = ns.simulate_nonstationary(...)
 ## Citation
 
 ```bibtex
-@article{CHEN2026114603,
+@article{chen2026mssp,
   title = {Reconciling the accuracy-efficiency trade-off in stochastic wind field simulation: A dual-level parallel algorithmic perspective},
   journal = {Mechanical Systems and Signal Processing},
   volume = {258},
