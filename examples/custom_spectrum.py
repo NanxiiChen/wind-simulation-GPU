@@ -31,7 +31,7 @@ class MySpectrum(WindSpectrum):
 sim = JaxWindSimulator(
     key=42,
     spectrum_type=MySpectrum,   # custom class
-    N=3000, U_d=20.0, w_up=5.0,
+    N=3000, Us10=20.0, w_up=5.0,
 )
 
 # --- 3. Define spatial points ---

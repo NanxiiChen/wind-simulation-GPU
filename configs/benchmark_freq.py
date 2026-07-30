@@ -19,7 +19,7 @@ def get_config() -> ConfigDict:
 
     # Simulation parameters
     cfg.params = ConfigDict()
-    cfg.params.U_d = 25.0
+    cfg.params.Us10 = 25.0
     cfg.params.w_up = 5.0
     cfg.params.T = 600.0
 

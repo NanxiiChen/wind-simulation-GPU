@@ -25,7 +25,7 @@ class SimulationParams:
         Cutoff frequency [Hz].
     N:
         Number of frequency segments.
-    U_d:
+    Us10:
         Reference basic wind speed [m/s].
     z_max:
         Maximum height for mean wind speed calculation [m].
@@ -57,7 +57,7 @@ class SimulationParams:
     # Numerical settings
     N: int = 3000
     z_max: float = 450.0
-    U_d: float = 25.0
+    Us10: float = 25.0
 
     # Computed fields (set by __post_init__)
     M: int = field(init=False)

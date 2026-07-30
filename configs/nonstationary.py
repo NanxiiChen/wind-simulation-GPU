@@ -12,7 +12,7 @@ def get_config() -> ConfigDict:
     cfg.component = "u"
 
     cfg.params = ConfigDict()
-    cfg.params.U_d = 20.0
+    cfg.params.Us10 = 20.0
     cfg.params.H_bar = 20.0
     cfg.params.alpha_0 = 0.12
     cfg.params.z_0 = 0.01
