@@ -122,7 +122,7 @@ import numpy as np
 from stochastic_wind_simulate import create_simulator, NonstationaryWindSimulator, WindVisualizer
 
 # --- Stationary ---
-sim = create_simulator("jax", "kaimal", seed=42, N=3000, U_d=20.0, w_up=5.0)
+sim = create_simulator("jax", "kaimal", seed=42, N=3000, Us10=20.0, w_up=5.0)
 
 positions = np.zeros((100, 3), dtype=np.float32)
 positions[:, 0] = np.linspace(0, 1000, 100)
@@ -170,7 +170,7 @@ sim = create_simulator("jax", "teunissen", seed=42, N=3000)
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `U_d` | 25.0 | Reference wind speed at 10 m [m/s] |
+| `Us10` | 25.0 | Reference wind speed at 10 m [m/s] |
 | `H_bar` | 10.0 | Average building height [m] |
 | `z_0` | 0.05 | Surface roughness height [m] |
 | `alpha_0` | 0.16 | Surface roughness exponent |
@@ -181,7 +181,7 @@ sim = create_simulator("jax", "teunissen", seed=42, N=3000)
 Computed automatically: `M = 2N`, `T = N/w_up`, `dt = T/M`, `dw = w_up/N`, `z_d = H_bar - z_0/K`.
 
 ```python
-sim.update_params(U_d=30.0, N=5000)
+sim.update_params(Us10=30.0, N=5000)
 ```
 
 ### Configuration Files
@@ -200,7 +200,7 @@ def get_config() -> ConfigDict:
     cfg.component = "u"
 
     cfg.params = ConfigDict()
-    cfg.params.U_d = 20.0; cfg.params.H_bar = 20.0
+    cfg.params.Us10 = 20.0; cfg.params.H_bar = 20.0
     cfg.params.alpha_0 = 0.12; cfg.params.z_0 = 0.01
     cfg.params.w_up = 5.0; cfg.params.N = 3000
 

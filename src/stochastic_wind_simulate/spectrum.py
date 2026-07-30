@@ -25,18 +25,18 @@ class WindSpectrum:
         self.xp = xp
         self.params = params
 
-    def mean_wind_speed(self, z, U_d, alpha_0):
-        """Mean wind speed at height z: U_d * (z/10)^alpha_0."""
-        return U_d * (z / 10.0) ** alpha_0
+    def mean_wind_speed(self, z, Us10, alpha_0):
+        """Mean wind speed at height z: Us10 * (z/10)^alpha_0."""
+        return Us10 * (z / 10.0) ** alpha_0
 
-    def friction_velocity(self, z, U_d, z_0, z_d, K, alpha_0):
+    def friction_velocity(self, z, Us10, z_0, z_d, K, alpha_0):
         """Friction velocity: u_* = K * U_z / ln((z - z_d) / z_0)."""
-        U_z = self.mean_wind_speed(z, U_d, alpha_0)
+        U_z = self.mean_wind_speed(z, Us10, alpha_0)
         return K * U_z / self.xp.log((z - z_d) / z_0)
 
-    def reduced_frequency(self, n, z, U_d, alpha_0):
+    def reduced_frequency(self, n, z, Us10, alpha_0):
         """Reduced frequency: f = n * z / U_z."""
-        U_z = self.mean_wind_speed(z, U_d, alpha_0)
+        U_z = self.mean_wind_speed(z, Us10, alpha_0)
         return n * z / U_z
 
     def __call__(self, freq, heights, component: str, **override):
@@ -51,7 +51,7 @@ class WindSpectrum:
         component:
             Wind component: ``"u"`` (along-wind) or ``"w"`` (vertical).
         override:
-            Optional parameter overrides (e.g. ``U_d=25.0``).
+            Optional parameter overrides (e.g. ``Us10=25.0``).
 
         Returns
         -------
@@ -59,9 +59,9 @@ class WindSpectrum:
         """
         p = {**self.params, **override}
         u_star = self.friction_velocity(
-            heights, p["U_d"], p["z_0"], p["z_d"], p["K"], p["alpha_0"]
+            heights, p["Us10"], p["z_0"], p["z_d"], p["K"], p["alpha_0"]
         )
-        f = self.reduced_frequency(freq, heights, p["U_d"], p["alpha_0"])
+        f = self.reduced_frequency(freq, heights, p["Us10"], p["alpha_0"])
         fn = getattr(self, f"psd_{component}", None)
         if fn is None:
             raise ValueError(

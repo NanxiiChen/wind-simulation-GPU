@@ -46,13 +46,13 @@ def my_evolution_psd(freq, heights, wind_speeds, component,
     # so that friction velocity and reduced frequency vary over time
     modulated_wind = wind_speeds * mod_factor
     base_psd = simulator.spectrum(
-        freq, heights, component, U_d=modulated_wind,
+        freq, heights, component, Us10=modulated_wind,
     )
     return base_psd
 
 
 # --- 2. Create stationary simulator & wrap with nonstationary ---
-sim = create_simulator("jax", "kaimal", seed=42, N=1024, U_d=20.0, w_up=5.0)
+sim = create_simulator("jax", "kaimal", seed=42, N=1024, Us10=20.0, w_up=5.0)
 ns  = NonstationaryWindSimulator(sim)
 
 # --- 3. Define spatial points ---
