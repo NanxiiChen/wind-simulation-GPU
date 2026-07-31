@@ -220,7 +220,7 @@ class NonstationaryWindSimulator:
                 component=component, mod_factor=mod_factor, simulator=self,
             ))
         U_mod = self._modulated_wind(wind_speeds, mod_factor)
-        return s.spectrum(freq, s._asarray(heights), component, U_d=U_mod)
+        return s.spectrum(freq, s._asarray(heights), component, Us10=U_mod)
 
     def _modulated_wind(self, wind_speeds, mod_factor):
         """Return wind_speeds scaled by mod_factor (backend array or scalar)."""

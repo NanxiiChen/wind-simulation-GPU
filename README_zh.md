@@ -122,7 +122,7 @@ import numpy as np
 from stochastic_wind_simulate import create_simulator, NonstationaryWindSimulator, WindVisualizer
 
 # --- 平稳模拟 ---
-sim = create_simulator("jax", "kaimal", seed=42, N=3000, U_d=20.0, w_up=5.0)
+sim = create_simulator("jax", "kaimal", seed=42, N=3000, Us10=20.0, w_up=5.0)
 
 positions = np.zeros((100, 3), dtype=np.float32)
 positions[:, 0] = np.linspace(0, 1000, 100)
@@ -170,7 +170,7 @@ sim = create_simulator("jax", "teunissen", seed=42, N=3000)
 
 | 参数 | 默认值 | 描述 |
 |-----------|---------|------|
-| `U_d` | 25.0 | 10 m 高度处参考风速 [m/s] |
+| `Us10` | 25.0 | 10 m 高度处参考风速 [m/s] |
 | `H_bar` | 10.0 | 平均建筑高度 [m] |
 | `z_0` | 0.05 | 地表粗糙高度 [m] |
 | `alpha_0` | 0.16 | 地表粗糙指数 |
@@ -181,7 +181,7 @@ sim = create_simulator("jax", "teunissen", seed=42, N=3000)
 自动计算：`M = 2N`、`T = N/w_up`、`dt = T/M`、`dw = w_up/N`、`z_d = H_bar - z_0/K`。
 
 ```python
-sim.update_params(U_d=30.0, N=5000)
+sim.update_params(Us10=30.0, N=5000)
 ```
 
 ### 配置文件
@@ -200,7 +200,7 @@ def get_config() -> ConfigDict:
     cfg.component = "u"
 
     cfg.params = ConfigDict()
-    cfg.params.U_d = 20.0; cfg.params.H_bar = 20.0
+    cfg.params.Us10 = 20.0; cfg.params.H_bar = 20.0
     cfg.params.alpha_0 = 0.12; cfg.params.z_0 = 0.01
     cfg.params.w_up = 5.0; cfg.params.N = 3000
 

@@ -62,7 +62,7 @@ cfg.backend          # "jax" | "numpy" | "torch"
 cfg.spectrum         # "kaimal" | "panofsky" | "teunissen"
 cfg.seed             # int
 cfg.component        # "u" | "w"
-cfg.params           # U_d, H_bar, z_0, alpha_0, w_up, N, (C_x, C_y, C_z)
+cfg.params           # Us10, H_bar, z_0, alpha_0, w_up, N, (C_x, C_y, C_z)
 cfg.spatial          # n_points, z, wind_speed
 cfg.nonstationary    # enabled, mode, modulation_amplitude
 cfg.memory           # max_memory_gb, auto_batch, freq_batch_size
@@ -78,7 +78,7 @@ from stochastic_wind_simulate import (
 )
 
 # Stationary
-sim = create_simulator("jax", "kaimal", seed=42, N=3000, U_d=20.0, w_up=5.0)
+sim = create_simulator("jax", "kaimal", seed=42, N=3000, Us10=20.0, w_up=5.0)
 samples, freqs = sim.simulate_wind(positions, wind_speeds, component="u",
                                    max_memory_gb=4.0, auto_batch=True)
 

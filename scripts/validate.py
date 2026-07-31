@@ -132,7 +132,7 @@ def main(_):
     sim = NonstationaryWindSimulator(
         create_simulator(backend, spectrum, seed=cfg.seed,
                          N=params.N, w_up=params.w_up,
-                         U_d=params.U_d, H_bar=params.H_bar,
+                         Us10=params.Us10, H_bar=params.H_bar,
                          z_0=params.z_0, alpha_0=params.alpha_0))
 
     positions = np.zeros((spatial.n_points, 3), dtype=np.float32)
